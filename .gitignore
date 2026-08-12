@@ -1,1 +1,42 @@
+# Environment / secrets
+.env
+.env.*
+!.env.example
 
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+
+# Large generated files
+outputs/
+artifacts/
+checkpoints/
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
