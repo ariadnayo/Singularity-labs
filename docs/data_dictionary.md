@@ -1,1 +1,218 @@
+# Singularity Labs — Data Dictionary
 
+## Purpose
+
+This document defines the meaning of the structured clinical-outcome dataset.
+
+The documentation must describe the actual data rather than assumptions about the data.
+
+---
+
+# Core Outcome Fields
+
+## nct_id
+
+ClinicalTrials.gov study identifier.
+
+Example:
+
+`NCT01101334`
+
+---
+
+## title
+
+The title or description of the clinical outcome measure.
+
+This field may contain important information about the endpoint definition, assessment method, population, and timeframe.
+
+Do not classify an outcome based solely on keyword matching when the full title provides contradictory information.
+
+---
+
+## parameter
+
+The type of reported statistic or measurement.
+
+Examples include:
+
+* MEDIAN
+* MEAN
+* NUMBER
+* COUNT_OF_PARTICIPANTS
+* COUNT_OF_UNITS
+
+The parameter describes how the value should be interpreted.
+
+It does not by itself determine the clinical endpoint.
+
+---
+
+## unit
+
+The unit or semantic representation of the reported value.
+
+Examples include:
+
+* months
+* percentage of participants
+* Participants
+* Probability
+* Number
+* Score on a scale
+
+Do not assume that `NUMBER` means a raw participant count. The title and unit must be considered together.
+
+---
+
+## timeframe
+
+The period over which the outcome was assessed.
+
+Examples include:
+
+* 6 months
+* 12 months
+* baseline to disease progression
+* baseline to death
+* study completion
+
+Fixed-time survival outcomes must not automatically be interpreted as median survival.
+
+---
+
+## group
+
+The treatment arm, cohort, population, or analysis group associated with the outcome.
+
+---
+
+## value
+
+The reported numerical value.
+
+The value must be interpreted in conjunction with:
+
+* endpoint
+* parameter
+* unit
+* timeframe
+* title
+* group
+
+Never interpret the value independently.
+
+---
+
+# Canonical Endpoint Categories
+
+The canonical endpoint field is:
+
+`outcomes_df["endpoint"]`
+
+Current canonical categories:
+
+* PFS
+* OS
+* ORR
+* DOR
+* DFS
+
+---
+
+# PFS
+
+Progression-Free Survival.
+
+Generally describes time from a defined starting point until disease progression or death, depending on the study definition.
+
+Examples may include:
+
+* median PFS
+* progression-free survival time
+* progression-free survival rate
+* PFS at a fixed timepoint
+
+Fixed-time PFS outcomes such as PFS6 and PFS12 may require subtype handling and should not automatically be treated as equivalent to median PFS.
+
+---
+
+# OS
+
+Overall Survival.
+
+Generally describes time from a defined starting point until death from any cause.
+
+Examples may include:
+
+* median OS
+* overall survival rate
+* OS at 6 months
+* OS at 12 months
+* OS at 24 months
+
+A fixed-time OS rate is not the same statistical quantity as median OS.
+
+---
+
+# ORR
+
+Overall Response Rate / Objective Response Rate depending on the source terminology.
+
+Usually represents the proportion or percentage of participants achieving a defined tumor response.
+
+The exact response definition must be interpreted from the source.
+
+Do not classify Duration of Response as ORR merely because the title contains the word "response."
+
+---
+
+# DOR
+
+Duration of Response.
+
+Generally describes the duration from documented response until disease progression or death, according to the study definition.
+
+Examples include:
+
+* median DOR
+* duration of objective response
+
+DOR is distinct from ORR.
+
+---
+
+# DFS
+
+Disease-Free Survival.
+
+Generally describes the time from a defined starting point until disease recurrence or death, depending on the study definition.
+
+Fixed-time DFS rates and median DFS are different statistical quantities.
+
+---
+
+# Related Measures That Require Careful Handling
+
+The following should not automatically be mapped to canonical endpoints without contextual review:
+
+* PFS6
+* PFS12
+* OS6
+* OS12
+* survival rate
+* disease control rate
+* clinical benefit rate
+* time to progression
+* time to local progression
+* quality-of-life outcomes
+* adverse-event outcomes
+* tumor response subcategories
+
+---
+
+# Data Integrity Rule
+
+When uncertain, preserve the original source information and flag the record.
+
+Do not manufacture certainty.
