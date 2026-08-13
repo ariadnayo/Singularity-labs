@@ -14,11 +14,33 @@ from typing import Optional
 
 
 @dataclass(frozen=True)
+class Provenance:
+    """Generic record of where a raw data point came from and how it
+    can be reproduced. Deliberately source-agnostic (no field here is
+    specific to ClinicalTrials.gov) so any future adapter -- PubMed/
+    NCBI, OpenAlex, FDA, PubChem, ChEMBL, UniProt, Open Targets, etc.
+    -- can populate the same shape without changing this schema.
+    """
+
+    source: str  # e.g. "clinicaltrials.gov"
+    source_record_id: str  # e.g. an NCT ID, PMID, ChEMBL ID, etc.
+    retrieved_at: str  # ISO 8601 UTC timestamp of the actual retrieval
+    request_url: str  # the exact URL/endpoint requested
+    query_params: dict  # the exact query parameters used, for reproducibility
+    raw: Optional[dict] = None  # the raw source record (or the relevant slice of it)
+
+
+@dataclass(frozen=True)
 class OutcomeRecord:
     """One row of raw, unclassified clinical outcome data.
 
     Fields correspond exactly to docs/data_dictionary.md:
     nct_id, title, parameter, unit, timeframe, group, value.
+
+    `provenance` is optional (mock/test fixtures need not set it) but
+    should always be populated for records ingested from a real
+    external source, so downstream analyses can be traced back to
+    exactly what was requested, when, and from where.
     """
 
     nct_id: str
@@ -28,6 +50,7 @@ class OutcomeRecord:
     timeframe: Optional[str] = None
     group: Optional[str] = None
     value: Optional[float] = None
+    provenance: Optional[Provenance] = None
 
     def __post_init__(self) -> None:
         if not self.nct_id:

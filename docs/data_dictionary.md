@@ -216,3 +216,54 @@ The following should not automatically be mapped to canonical endpoints without 
 When uncertain, preserve the original source information and flag the record.
 
 Do not manufacture certainty.
+
+---
+
+# Provenance
+
+Every `OutcomeRecord` ingested from a real external source (as opposed
+to a test/mock fixture) should carry a `Provenance` record
+(`src/singularity/schema.py`) with:
+
+* `source` — the name of the external source, e.g. `"clinicaltrials.gov"`.
+* `source_record_id` — the source's own identifier for the underlying
+  record (e.g. an NCT ID).
+* `retrieved_at` — ISO 8601 UTC timestamp of the actual retrieval.
+* `request_url` — the exact URL requested.
+* `query_params` — the exact query parameters used, so the request can
+  be reproduced.
+* `raw` — the raw source record, or the relevant slice of it, so the
+  mapping into `OutcomeRecord` fields can be audited or re-derived.
+
+This is intentionally generic and carries nothing specific to any one
+source, so it applies unchanged to future sources (PubMed/NCBI,
+OpenAlex, FDA, PubChem, ChEMBL, UniProt, Open Targets).
+
+---
+
+# ClinicalTrials.gov API v2 → OutcomeRecord Mapping
+
+Implemented in `src/singularity/sources/clinicaltrials.py`. Verified
+live 2026-08-13: public API, no authentication required, JSON
+responses, base URL `https://clinicaltrials.gov/api/v2/studies`.
+
+Only studies with `hasResults: true` contribute records — most
+registered trials have not posted results, and that is expected, not
+an error. For each entry in
+`resultsSection.outcomeMeasuresModule.outcomeMeasures[]`, one
+`OutcomeRecord` is produced per (measurement × group):
+
+| OutcomeRecord field | ClinicalTrials.gov v2 field |
+|---|---|
+| `nct_id` | `protocolSection.identificationModule.nctId` |
+| `title` | `outcomeMeasures[].title` |
+| `parameter` | `outcomeMeasures[].paramType` |
+| `unit` | `outcomeMeasures[].unitOfMeasure` |
+| `timeframe` | `outcomeMeasures[].timeFrame` |
+| `group` | `outcomeMeasures[].groups[].title`, matched via `classes[].categories[].measurements[].groupId` |
+| `value` | `classes[].categories[].measurements[].value` (parsed as float; non-numeric values such as `"NA"` become `None`, never guessed) |
+
+Note: this maps *reported results* (`resultsSection`), not the
+*planned* outcome measures in `protocolSection.outcomesModule`
+(`primaryOutcomes`/`secondaryOutcomes`), which have no reported values
+and are out of scope for `OutcomeRecord` until a study posts results.

@@ -2,11 +2,11 @@
 
 ## Last Updated
 
-2026-08-13
+2026-08-13 (session 3)
 
 ## Current Phase
 
-Phase 1 — Data Foundation
+Phase 1 / Phase 1a — Data Foundation / ClinicalTrials.gov Integration
 
 ## Current Objective
 
@@ -41,16 +41,76 @@ Establish a reliable and scientifically correct clinical-outcome data foundation
   needed to run the pipeline on real data (a real CSV file, or a
   documented API source with credentials -- neither currently exists
   in or is reachable from this repo).
-* Full test suite: 22/22 passing (`pytest tests/`).
+* `src/singularity/sources/base.py`: generic `DataSourceAdapter`
+  interface, so future sources plug in without changing the schema.
+* `src/singularity/sources/clinicaltrials.py`: ClinicalTrials.gov API
+  v2 adapter -- pagination, rate-limit-respecting delay between pages,
+  provenance capture, and mapping from
+  `resultsSection.outcomeMeasuresModule` onto `OutcomeRecord`
+  (one record per measurement × group). Uses only the standard library
+  (`urllib`), no auth, since none is required (verified live).
+* `src/singularity/schema.py`: added `Provenance` (source, source
+  record id, retrieval timestamp, request URL, query params, raw
+  record) and an optional `provenance` field on `OutcomeRecord`.
+  Deliberately source-agnostic.
+* `tests/test_clinicaltrials_adapter.py`: 9 tests against hand-written
+  mock JSON shaped like real ClinicalTrials.gov v2 responses (NCT IDs
+  in the 99999900s range, invented drug/sponsor names, to keep mock
+  and real data unambiguous). No real network call in any test.
+* `docs/architecture.md`: added a "Data Sources" section naming
+  ClinicalTrials.gov as the initial authoritative source, documenting
+  the no-auth finding, and describing the adapter pattern for future
+  sources.
+* `docs/data_dictionary.md`: added the `Provenance` field spec and the
+  full ClinicalTrials.gov API v2 → `OutcomeRecord` field mapping table.
+* Full test suite: 31/31 passing (`pytest tests/`).
 
-## Data Source Status (searched this session)
+## ClinicalTrials.gov API — What Was Actually Verified This Session
 
-Searched: entire repo tree, `Claude.md`, all files in `docs/`, and the
-uploads/session environment. Result: **no real dataset file, API
-endpoint, or credentials for one are present or documented anywhere.**
-`docs/architecture.md` names "Data Sources" only as a generic box in
-the pipeline diagram, with no specifics. The 5,165-row dataset
-referenced elsewhere in this file has never been located.
+Verified live, via a direct HTTPS request made through a tool with
+broader network access than the code-execution sandbox (not through
+the sandbox's own `bash`/Python, which cannot reach
+`clinicaltrials.gov` -- see "Environment Constraint" below):
+
+* The endpoint `https://clinicaltrials.gov/api/v2/studies` is real,
+  public, and returns JSON right now.
+* **No authentication or API key is required.** This was determined by
+  actually making an unauthenticated request and receiving a normal
+  200 response with real study data, not by assuming it from
+  documentation alone (docs were also checked and agree: public,
+  U.S.-government-work, no-auth, ~50 requests/minute rate limit).
+* The response shape matches what's implemented in
+  `src/singularity/sources/clinicaltrials.py` and documented in
+  `docs/data_dictionary.md` (`protocolSection.identificationModule.nctId`,
+  `hasResults`, etc.). The specific batch fetched during verification
+  happened to all have `hasResults: false`, so the exact
+  `resultsSection.outcomeMeasuresModule` shape for a study with posted
+  results was confirmed from official/third-party API field
+  documentation (cited in code comments and `docs/data_dictionary.md`),
+  not from a live example with real posted results.
+
+## Environment Constraint (real, not hypothetical)
+
+The sandboxed code-execution environment used for this autonomous
+session has a restricted network egress allowlist that does **not**
+include `clinicaltrials.gov` (confirmed by the allowlist itself, not
+by a failed guess). This means:
+
+* `src/singularity/sources/clinicaltrials.py`'s real HTTP path
+  (`_default_http_get`, built on stdlib `urllib`) has not been and
+  currently cannot be executed against the live API from within this
+  sandbox.
+* All 9 tests in `tests/test_clinicaltrials_adapter.py` inject a mock
+  `http_get` and never touch the network.
+* Actually running ClinicalTrials.gov ingestion end-to-end requires
+  either (a) running this code in an environment with network access
+  to `clinicaltrials.gov` (e.g. a human's machine, CI, or a
+  differently configured agent environment), or (b) this sandbox's
+  network policy being changed to allow that host.
+
+This is a environment/infrastructure limitation, not a missing-data
+problem -- the data source itself is real, public, and already
+integrated in code.
 
 ## Current Known Data — UNVERIFIED, DO NOT TREAT AS CURRENT
 
@@ -98,58 +158,59 @@ These distinctions must be preserved rather than guessed.
 
 ## Current Priority
 
-The ingestion and classification pipeline is now fully implemented and
-tested against mock data, but it has **not been run against real
-clinical-trial data**, because none is present or reachable. This is a
-hard blocker on the roadmap item "integrate classification pipeline
-with real data" -- the code side of that task is done; the data side
-is not, and cannot be completed autonomously without a real data
-source being supplied.
+ClinicalTrials.gov is now the designated initial authoritative data
+source, and a fully tested (against mocks) ingestion adapter exists.
+The remaining gap is purely environmental: actually running that
+adapter against the live API requires network access this sandbox
+doesn't have. This is no longer blocked on "no data source exists" --
+it's blocked on "this specific execution environment can't reach the
+host." That distinction matters and should not be collapsed back into
+"waiting for a human to supply a CSV."
 
 ## Tests
 
-`pytest tests/` — 22/22 passing:
+`pytest tests/` — 31/31 passing:
 * `tests/test_endpoints.py` (13) — classification rules, mock fixtures.
-* `tests/test_ingest_and_audit.py` (9) — ingestion validation failure
-  modes and end-to-end audit, mock fixtures.
+* `tests/test_ingest_and_audit.py` (9) — CSV ingestion validation
+  failure modes and end-to-end audit, mock fixtures.
+* `tests/test_clinicaltrials_adapter.py` (9) — ClinicalTrials.gov
+  adapter (URL building, pagination, provenance capture, outcome
+  extraction, malformed-value handling), mock HTTP transport.
 
 No test in this suite uses or claims real clinical-trial data.
 
 ## Blockers
 
-* **No real dataset is present in `data/` or anywhere in this repo.**
-  Confirmed by an explicit search of the full repo tree and the
-  session environment this session.
+* **This sandbox's network egress does not include `clinicaltrials.gov`.**
+  The adapter code is complete and correct against the verified live
+  API shape, but cannot be executed end-to-end here. Running it for
+  real requires either network access to be granted to this host, or
+  running the code in an environment that already has it (a
+  developer's machine, CI, etc.).
 * The 5,165-row / 801-classified counts recorded elsewhere in this
-  file are unverified legacy notes from before this codebase existed
-  in its current form. They cannot be reproduced and must not be
-  cited as current results.
-* Running the pipeline for real requires a human to supply one of:
-  1. A real CSV file at `data/outcomes.csv` (or similar), with its
-     provenance documented (source, export date, query).
-  2. Or a documented API/source plus credentials, if the data is meant
-     to come from a live system rather than a static export.
+  file remain unverified legacy notes and must not be cited as current.
 
 ## Next Recommended Task
 
-Once a real data source is supplied per the two options above:
-1. Run `singularity.audit.run_audit(path)` against it.
-2. Manually spot-check a sample of the classification output against
-   the source titles for correctness (per `Claude.md` section 9 --
-   an audit report alone is not sufficient validation).
-3. Record the real, reproducible counts here, replacing the "UNVERIFIED"
-   section above.
+1. Run `ClinicalTrialsAdapter().fetch_outcome_records(...)` for real,
+   in an environment with network access to `clinicaltrials.gov` (e.g.
+   `query_cond="<some condition>", filter_overall_status=["COMPLETED"], max_pages=1`
+   as a small first real run).
+2. Manually spot-check a handful of the resulting `OutcomeRecord`s
+   against the actual ClinicalTrials.gov study pages for the same NCT
+   IDs, to confirm the field mapping holds on real data (not just mock
+   data) -- per `Claude.md` section 9, an audit report alone is not
+   sufficient validation.
+3. Run `singularity.endpoints.classify_batch` + `summarize` on the real
+   records and record the actual, reproducible counts here, replacing
+   the "UNVERIFIED" section above.
 4. Only then proceed to the next roadmap phase (Clinical Trial
-   Intelligence).
-
-Until real data is supplied, autonomous progress on this specific task
-is blocked; further roadmap phases that assume classified real data as
-input should not be started, since they would have nothing real to
-build on.
+   Intelligence) or to additional sources (PubMed/NCBI, OpenAlex, FDA,
+   PubChem, ChEMBL, UniProt, Open Targets).
 
 ## Human Decisions Required
 
-* Where does the real outcomes dataset referenced in earlier sessions
-  actually come from, and can it be provided (as a file or an
-  accessible API)? This is required to continue Phase 1 with real
-  data rather than mock fixtures.
+* Can this sandbox's network egress allowlist be updated to include
+  `clinicaltrials.gov`, so the adapter can be run end-to-end
+  autonomously in future sessions? If not, real ingestion runs will
+  need to happen outside this specific environment.

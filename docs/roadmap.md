@@ -40,6 +40,41 @@ The current priority is to establish a reliable clinical-outcome data foundation
       in `tests/` exercise classifier logic but are not a manually
       verified sample of real trial data.
 
+---
+
+# Phase 1a — ClinicalTrials.gov Integration (initial authoritative source)
+
+* [x] Determine whether ClinicalTrials.gov API requires authentication
+      — verified live: it does not (public, no key, JSON, ~50 req/min
+      rate limit). See `docs/architecture.md` § Data Sources.
+* [x] Design a source-adapter interface that lets future sources
+      (PubMed/NCBI, OpenAlex, FDA, PubChem, ChEMBL, UniProt, Open
+      Targets) be added without changing `OutcomeRecord` —
+      `src/singularity/sources/base.py`.
+* [x] Implement the ClinicalTrials.gov API v2 adapter —
+      `src/singularity/sources/clinicaltrials.py` (pagination, rate-
+      limit-respecting delay, provenance capture, results-section →
+      OutcomeRecord mapping).
+* [x] Add `Provenance` to the core schema (source, source record id,
+      retrieval timestamp, request URL, query params, raw record) —
+      `src/singularity/schema.py`.
+* [x] Add mocked adapter/integration tests, clearly separated from any
+      real data — `tests/test_clinicaltrials_adapter.py` (9 tests).
+* [ ] Run the adapter against the live API and ingest a real batch of
+      studies — **blocked in the current sandboxed environment**,
+      which cannot reach `clinicaltrials.gov` over the network (see
+      `docs/autonomous_state.md`). Not blocked by any missing data
+      source, license, or credential.
+* [ ] Manually spot-check a real ingested sample against source study
+      pages for mapping correctness, once real ingestion has run.
+* [ ] Run `singularity.audit.run_audit`-equivalent against real
+      ClinicalTrials.gov data and record actual, reproducible
+      classification counts (replacing the "UNVERIFIED" legacy numbers
+      in `docs/autonomous_state.md`).
+* [ ] Only after the above: proceed to additional sources
+      (PubMed/NCBI, OpenAlex, FDA, PubChem, ChEMBL, UniProt, Open
+      Targets), per `docs/architecture.md`.
+
 ## Phase 2 — Clinical Trial Intelligence
 
 * [ ] Build structured trial representation
