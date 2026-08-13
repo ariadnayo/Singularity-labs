@@ -10,23 +10,35 @@ The current priority is to establish a reliable clinical-outcome data foundation
 
 # Phase 1 — Data Foundation
 
-* [ ] Audit the current data pipeline
-* [ ] Document the complete outcome schema
-* [ ] Validate `outcomes_df["endpoint"]`
-* [ ] Build endpoint classification validation
-* [ ] Investigate unclassified outcomes
-* [ ] Investigate suspicious PFS classifications
-* [ ] Investigate suspicious OS classifications
-* [ ] Investigate suspicious ORR classifications
-* [ ] Investigate suspicious DOR classifications
-* [ ] Investigate suspicious DFS classifications
-* [ ] Normalize endpoint terminology
-* [ ] Normalize units
-* [ ] Handle missing values consistently
-* [ ] Detect duplicate outcome records
-* [ ] Preserve source provenance
-* [ ] Build automated data-quality reporting
-* [ ] Create a manually verified endpoint test set
+* [x] Audit the current data pipeline — searched full repo; no real
+      pipeline or dataset exists yet (see `docs/autonomous_state.md`,
+      "Data Source Status"). Ingestion/validation/classification code
+      is implemented and tested but has never run on real data.
+* [x] Document the complete outcome schema — `docs/data_dictionary.md`
+      + `src/singularity/schema.py`.
+* [ ] Validate `outcomes_df["endpoint"]` — blocked, no real data.
+* [x] Build endpoint classification validation —
+      `src/singularity/endpoints.py`, `tests/test_endpoints.py`.
+* [ ] Investigate unclassified outcomes — blocked, no real data.
+* [ ] Investigate suspicious PFS classifications — blocked, no real data.
+* [ ] Investigate suspicious OS classifications — blocked, no real data.
+* [ ] Investigate suspicious ORR classifications — blocked, no real data.
+* [ ] Investigate suspicious DOR classifications — blocked, no real data.
+* [ ] Investigate suspicious DFS classifications — blocked, no real data.
+* [ ] Normalize endpoint terminology — subtype distinction exists in
+      the classifier, but full terminology normalization is not built.
+* [ ] Normalize units — not built.
+* [x] Handle missing values consistently —
+      `src/singularity/ingest.py` (`ValidationReport`).
+* [x] Detect duplicate outcome records — `src/singularity/ingest.py`
+      (detected and reported, never silently removed).
+* [ ] Preserve source provenance — not built; ingestion records the
+      source file path in `ValidationReport` but not per-row provenance.
+* [x] Build automated data-quality reporting —
+      `src/singularity/audit.py` (`AuditReport`, markdown output).
+* [ ] Create a manually verified endpoint test set — the mock fixtures
+      in `tests/` exercise classifier logic but are not a manually
+      verified sample of real trial data.
 
 ## Phase 2 — Clinical Trial Intelligence
 
