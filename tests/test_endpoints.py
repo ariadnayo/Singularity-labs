@@ -117,6 +117,54 @@ def test_empty_title_raises_on_construction():
         pass
 
 
+def test_followup_ceiling_timeframe_not_mistaken_for_fixed_timepoint():
+    """Regression test for a real classification bug found during
+    ClinicalTrials.gov real-data validation on 2026-08-13
+    (docs/autonomous_state.md): a plain median PFS/OS title with a
+    study-wide follow-up ceiling in `timeframe` (e.g. "Up to
+    approximately 58 months") was incorrectly flagged as a fixed-
+    timepoint PFS58/OS58 subtype. The exact title/timeframe pair below
+    is copied from the real trial (NCT07227597) that exposed the bug.
+    """
+    r = _mock_record(
+        title="Progression-Free Survival (PFS)",
+        parameter=None,
+        unit=None,
+        timeframe="Up to approximately 58 months",
+    )
+    result = classify_outcome(r)
+    assert result.endpoint == "PFS"
+    assert result.subtype == "median_or_time_to_event"
+    assert result.confident is True
+
+    r2 = _mock_record(
+        title="Overall Survival (OS)",
+        parameter=None,
+        unit=None,
+        timeframe="Up to approximately 58 months",
+    )
+    result2 = classify_outcome(r2)
+    assert result2.endpoint == "OS"
+    assert result2.subtype == "median_or_time_to_event"
+    assert result2.confident is True
+
+
+def test_genuine_fixed_timepoint_in_title_still_detected():
+    """Make sure the fix above didn't remove real fixed-timepoint
+    detection -- only the false-positive source (ceiling timeframes).
+    """
+    r = _mock_record(
+        title="Progression-Free Survival at 6 Months",
+        parameter="NUMBER",
+        unit="Probability",
+        timeframe="Up to approximately 58 months",
+    )
+    result = classify_outcome(r)
+    assert result.endpoint == "PFS"
+    assert result.subtype == "PFS6"
+    assert result.confident is False
+
+
 def test_summarize_counts_are_consistent():
     records = [
         _mock_record(title="Median Overall Survival", parameter="MEDIAN", unit="months"),

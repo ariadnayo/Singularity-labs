@@ -49,12 +49,34 @@ def _matches_any(patterns: list[str], text: str) -> bool:
 
 
 def _fixed_timepoint_months(record: OutcomeRecord) -> "str | None":
-    """Return e.g. '6' if the title or timeframe indicates a fixed
-    timepoint measurement (e.g. 'at 6 months'), else None."""
-    for field in (record.title, record.timeframe or ""):
-        m = _FIXED_TIMEPOINT_RE.search(field)
-        if m:
-            return m.group(1)
+    """Return e.g. '6' if the title, or an unambiguous timeframe,
+    indicates a fixed-timepoint measurement (e.g. 'at 6 months'), else
+    None.
+
+    BUG FOUND during real-data validation (2026-08-13, see
+    docs/autonomous_state.md): a real ClinicalTrials.gov trial
+    (NCT07227597) had a plain "Progression-Free Survival (PFS)" title
+    with timeframe "Up to approximately 58 months" -- boilerplate
+    describing the study's overall follow-up ceiling, which applies to
+    nearly every outcome in the trial, not a per-outcome fixed
+    timepoint. The original version of this function matched "58
+    months" in that boilerplate and mis-flagged a plain median PFS as
+    a fixed-timepoint "PFS58" subtype. Fix: only trust the title for
+    this signal; the timeframe field is only used as a fallback, and
+    only when it is NOT phrased as a maximum/ceiling ("up to ...",
+    "approximately ...") -- those phrasings describe study-wide
+    follow-up duration, not a specific assessment timepoint.
+    """
+    m = _FIXED_TIMEPOINT_RE.search(record.title)
+    if m:
+        return m.group(1)
+
+    timeframe = record.timeframe or ""
+    if re.search(r"\bup to\b|\bapproximately\b", timeframe, re.IGNORECASE):
+        return None
+    m = _FIXED_TIMEPOINT_RE.search(timeframe)
+    if m:
+        return m.group(1)
     return None
 
 

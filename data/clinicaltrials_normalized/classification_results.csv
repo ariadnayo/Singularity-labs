@@ -1,0 +1,34 @@
+nct_id,title,timeframe,endpoint,subtype,confident,reason
+NCT07227597,Number of Participants Who Experience an Adverse Event (AE),Up to approximately 58 months,,,False,"Title matches a related-but-distinct measure (e.g. DCR, CBR, TTP, QoL, AE) that must not be folded into a canonical endpoint per data_dictionary.md."
+NCT07227597,Number of Participants Who Experience One or More Dose-Limiting Toxicities (DLTs),Up to approximately 21 days,,,False,No canonical endpoint pattern matched; left unclassified rather than guessed.
+NCT07227597,Number of Participants Who Discontinue Study Intervention Due to an AE,Up to approximately 58 months,,,False,No canonical endpoint pattern matched; left unclassified rather than guessed.
+NCT07227597,Objective Response Rate (ORR),Up to approximately 58 months,ORR,,True,Title explicitly refers to objective/overall response rate.
+NCT07227597,Disease Control Rate (DCR),Up to approximately 58 months,,,False,"Title matches a related-but-distinct measure (e.g. DCR, CBR, TTP, QoL, AE) that must not be folded into a canonical endpoint per data_dictionary.md."
+NCT07227597,Duration of Response (DOR),Up to approximately 58 months,DOR,,True,Title explicitly refers to duration of response.
+NCT07227597,Progression-Free Survival (PFS),Up to approximately 58 months,PFS,median_or_time_to_event,True,Title refers to progression-free survival without a fixed-timepoint/rate qualifier.
+NCT07227597,Overall Survival (OS),Up to approximately 58 months,OS,median_or_time_to_event,True,Title refers to overall survival without a fixed-timepoint/rate qualifier.
+NCT06917079,"Incidence and severity of treatment emergent adverse events (TEAEs), serious adverse events (SAEs), and dose-limiting toxicities (DLTs)",approximately 5 years,,,False,No canonical endpoint pattern matched; left unclassified rather than guessed.
+NCT06917079,Objective response rate (ORR) per RECIST v1.1 and CNS RECIST,approximately 5 years,ORR,,True,Title explicitly refers to objective/overall response rate.
+NCT06917079,Clinical benefit rate (CBR) per RECIST v1.1,approximately 5 years,,,False,"Title matches a related-but-distinct measure (e.g. DCR, CBR, TTP, QoL, AE) that must not be folded into a canonical endpoint per data_dictionary.md."
+NCT06917079,Duration of Response (DOR) per RECIST v1.1,approximately 5 years,DOR,,True,Title explicitly refers to duration of response.
+NCT06917079,Progression-Free Survival (PFS) per RECIST v1.1,approximately 5 years,PFS,median_or_time_to_event,True,Title refers to progression-free survival without a fixed-timepoint/rate qualifier.
+NCT06917079,Overall Survival (OS),approximately 5 years,OS,median_or_time_to_event,True,Title refers to overall survival without a fixed-timepoint/rate qualifier.
+NCT05977803,"Visually significant hyperperfusion on normalized cerebral blood flow mapping generated from T2* infusion data with injection, confirmed by quantitative measurement of a ratio > 2.5 between tumor DSC and contralateral white matter.",24 months,,,False,No canonical endpoint pattern matched; left unclassified rather than guessed.
+NCT05977803,"Diagnostic performances for the IVIM sequence using IVIM scattering derivatives: f', ADC",24 months,,,False,No canonical endpoint pattern matched; left unclassified rather than guessed.
+NCT05977803,"Tolerance of acquisition of all CEST, IVIM and ASL sequences evaluated by the percentage of exams interrupted.",24 months,,,False,No canonical endpoint pattern matched; left unclassified rather than guessed.
+NCT04787042,Determine the maximum tolerated dose of ST-067 in phase 1a monotherapy,Day 29,,,False,No canonical endpoint pattern matched; left unclassified rather than guessed.
+NCT04787042,Number of Participants With Treatment-Related Adverse Events,Day 29,,,False,No canonical endpoint pattern matched; left unclassified rather than guessed.
+NCT04787042,Initial assessment of efficacy in phase 2,At 8 weeks,,,False,No canonical endpoint pattern matched; left unclassified rather than guessed.
+NCT04787042,PK,Day 29,,,False,No canonical endpoint pattern matched; left unclassified rather than guessed.
+NCT04787042,ADA,Day 29,,,False,No canonical endpoint pattern matched; left unclassified rather than guessed.
+NCT06005246,Extensive Phenotyping of ME/CFS Patients,5 years,,,False,No canonical endpoint pattern matched; left unclassified rather than guessed.
+NCT06005246,Risk factors,5 years,,,False,No canonical endpoint pattern matched; left unclassified rather than guessed.
+NCT06005246,Biomarkers,5 years,,,False,No canonical endpoint pattern matched; left unclassified rather than guessed.
+NCT05632913,Feasibility - DaRT seed placement,From Day 0-Day 90,,,False,No canonical endpoint pattern matched; left unclassified rather than guessed.
+NCT05632913,Safety- Adverse events,From Day 0-Day 90,,,False,No canonical endpoint pattern matched; left unclassified rather than guessed.
+NCT05632913,Efficacy - Alpha DaRT seeds,1 month and 3 months,,,False,No canonical endpoint pattern matched; left unclassified rather than guessed.
+NCT05632913,Efficacy - Alpha DaRT seeds,Day 0-Day 90,,,False,No canonical endpoint pattern matched; left unclassified rather than guessed.
+NCT07159659,hospital length of stay (LOS),assessed up to 7 days post-surgery,,,False,No canonical endpoint pattern matched; left unclassified rather than guessed.
+NCT07159659,Total Chest Drain Output (mL),assessed up to 7 days post-surgery,,,False,No canonical endpoint pattern matched; left unclassified rather than guessed.
+NCT07159659,Patient Satisfaction and Tolerability,"Upon discharge, 2 weeks post discharge, 3 months post discharge",,,False,No canonical endpoint pattern matched; left unclassified rather than guessed.
+NCT07159659,Number of Participants with Symptoms Associated with MCT Diet,"Upon discharge, 2 weeks post discharge, 3 months post discharge",,,False,No canonical endpoint pattern matched; left unclassified rather than guessed.

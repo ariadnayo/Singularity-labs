@@ -1,0 +1,71 @@
+This file documents the raw ClinicalTrials.gov API v2 response actually
+fetched live during this session (2026-08-13), and the real tooling
+constraint discovered while trying to widen the sample.
+
+REQUEST ACTUALLY SERVED (confirmed live, unauthenticated, real):
+  URL: https://clinicaltrials.gov/api/v2/studies?filter.overallStatus=RECRUITING&format=json&pageSize=10&query.cond=lung+cancer
+  Retrieved: 2026-08-13T00:00:00Z (approximate; exact server timestamp
+    not returned by this response; the request itself was made live
+    during this session)
+  Method: GET, no authentication, via a broader-network-access fetch
+    tool available to the agent (not the sandbox's own Python/bash,
+    which cannot reach clinicaltrials.gov -- see docs/autonomous_state.md)
+
+CONSTRAINT DISCOVERED THIS SESSION (real, not hypothetical):
+  Attempts to fetch DIFFERENT query parameters against the same
+  endpoint (e.g. query.cond=breast+cancer, filter.overallStatus=COMPLETED)
+  were silently served the SAME cached response as the original query
+  above -- confirmed by byte-identical study content across three
+  differently-parameterized requests. A request to a different path
+  (the single-study endpoint /studies/{NCT_ID}) was explicitly rejected
+  by the fetch tool as "not previously seen." In practice this means
+  only ONE real query result was obtainable in this session, not an
+  arbitrary controlled sample.
+
+WHAT THE FETCHED SAMPLE ACTUALLY CONTAINS:
+  7 real, currently RECRUITING oncology-related trials (verified NCT
+  IDs below). All 7 have hasResults=false -- none have posted results
+  yet, which is normal (most registered trials have not posted
+  results). This means there is no resultsSection.outcomeMeasuresModule
+  data (no measured values, no groups) available anywhere in this
+  session's real data.
+
+  What IS real and usable: protocolSection.outcomesModule.primaryOutcomes
+  and .secondaryOutcomes for each trial -- the PLANNED outcome measure
+  titles, as written by the real sponsors, with no posted numeric
+  values (values do not exist yet for these trials). These are used in
+  data/clinicaltrials_normalized/planned_outcome_titles.csv to validate
+  the classifier's title-matching logic against real trial language.
+  This is explicitly NOT a validation of the value/group ingestion path
+  (extract_outcome_records' measurement-parsing logic), which requires
+  a study with hasResults=true and could not be reached this session.
+
+Real NCT IDs in this sample (all verified live via the fetch above):
+  NCT07227597 - Merck Sharp & Dohme LLC - "A Clinical Study of Gocatamig
+    (MK-6070) and Ifinatamab Deruxtecan (MK-2400) in People With Small
+    Cell Lung Cancer"
+  NCT06917079 - TheRas, Inc. (BridgeBio Oncology Therapeutics) -
+    "BBO-11818 in Adult Subjects With KRAS Mutant Cancer"
+  NCT05977803 - Assistance Publique - Hopitaux de Paris - "Contribution
+    of the CEST Sequence in the Characterization of Radionecrosis of
+    Brain Metastases of Pulmonary Origin"
+  NCT04787042 - Simcha IL-18, Inc. - "Phase 1a and Phase 2 Study for
+    Safety, Preliminary Efficacy, PK and PD of ST-067"
+  NCT06005246 - Technical University of Munich - "Munich ME/CFS Cohort
+    Study" (surfaced by the lung-cancer query but not itself an
+    oncology trial -- excluded from the classification sample below)
+  NCT05632913 - Alpha Tau Medical LTD. - "Alpha Radiation Emitters
+    Device (DaRT) for the Treatment of Recurrent Lung Cancer"
+  NCT07159659 - Chinese University of Hong Kong - "Post-operative
+    Medium Chain Triglyceride Diet May Reduce Hospital Stay Following
+    Lung Resection" (surgical/nutrition trial, not an efficacy-endpoint
+    oncology trial -- excluded from the classification sample below)
+
+The full raw JSON for these studies is very large (includes eligibility
+criteria, locations, sponsors, etc. not relevant to outcome
+classification). Rather than duplicate all of it here, the relevant
+protocolSection.identificationModule.nctId and
+protocolSection.outcomesModule slices actually used for classification
+are in data/clinicaltrials_normalized/planned_outcome_titles.csv,
+traceable back to this file's request/retrieval metadata via the
+`source` field on each row.

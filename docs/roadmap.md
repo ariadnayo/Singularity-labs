@@ -60,20 +60,33 @@ The current priority is to establish a reliable clinical-outcome data foundation
       `src/singularity/schema.py`.
 * [x] Add mocked adapter/integration tests, clearly separated from any
       real data — `tests/test_clinicaltrials_adapter.py` (9 tests).
-* [ ] Run the adapter against the live API and ingest a real batch of
-      studies — **blocked in the current sandboxed environment**,
-      which cannot reach `clinicaltrials.gov` over the network (see
-      `docs/autonomous_state.md`). Not blocked by any missing data
-      source, license, or credential.
-* [ ] Manually spot-check a real ingested sample against source study
-      pages for mapping correctness, once real ingestion has run.
-* [ ] Run `singularity.audit.run_audit`-equivalent against real
-      ClinicalTrials.gov data and record actual, reproducible
-      classification counts (replacing the "UNVERIFIED" legacy numbers
-      in `docs/autonomous_state.md`).
-* [ ] Only after the above: proceed to additional sources
-      (PubMed/NCBI, OpenAlex, FDA, PubChem, ChEMBL, UniProt, Open
-      Targets), per `docs/architecture.md`.
+* [x] Fetch a real, controlled sample of oncology studies and run the
+      classifier against real (not mock) ClinicalTrials.gov data —
+      done 2026-08-13: 7 real trials, 33 real outcome titles, full
+      pipeline run, raw/normalized data saved separately with
+      provenance (`data/clinicaltrials_raw/`,
+      `data/clinicaltrials_normalized/`). See `docs/autonomous_state.md`
+      "Session 4 Summary" for the complete real-data validation run.
+* [x] Manually spot-check ≥20 real records against source — done: all
+      33 real rows spot-checked (target was ≥20), documented in a table
+      in `docs/autonomous_state.md` with per-row correctness.
+* [x] Document every classification error/ambiguity found — done: 1
+      real bug found (follow-up-ceiling timeframe mistaken for a fixed
+      PFS/OS timepoint), root-caused, fixed, and regression-tested
+      (`tests/test_endpoints.py`, 2 new tests using the real title/
+      timeframe pair that exposed it).
+* [ ] Validate the value/group extraction path
+      (`extract_outcome_records()`'s measurement parsing) against a
+      real study with `hasResults: true` — **not yet done**. No such
+      study was reachable this session (the one real query result
+      obtainable had 7 studies, all `hasResults: false`). This is the
+      specific remaining piece before the real-data validation gate is
+      fully closed — see `docs/autonomous_state.md` "Next Recommended
+      Task".
+* [ ] Only after the above: proceed to large-scale ingestion,
+      additional sources (PubMed/NCBI, OpenAlex, FDA, PubChem, ChEMBL,
+      UniProt, Open Targets), ML modeling, or UI work — explicitly not
+      started yet, per instruction.
 
 ## Phase 2 — Clinical Trial Intelligence
 
