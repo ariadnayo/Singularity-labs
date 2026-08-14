@@ -133,7 +133,89 @@ boilerplate, not specific to this one trial — so finding it via a real
 7-study sample rather than only mock fixtures was the point of doing
 this validation before scaling up.
 
-## Current Objective
+## Session 5 Summary: Real-Results Extraction — Blocked, Reproducible Script Delivered (2026-08-13)
+
+**Goal this session:** validate `extract_outcome_records()`'s value/
+group parsing against a real study with posted results
+(`hasResults: true`), closing the last Phase 1 gate. **Outcome: this
+specific validation could not be completed in this environment.**
+Three independent access paths were tried and exhausted; none used
+mock, synthetic, or planned-outcome data as a substitute for real
+posted results, per instruction.
+
+### Three access paths tried, in order, all confirmed blocked
+
+1. **Direct API queries with different parameters.** Requests to
+   `https://clinicaltrials.gov/api/v2/studies` with different
+   `query.cond`/`filter.overallStatus` values were silently served the
+   same cached response from an earlier, unrelated query (session 4's
+   lung-cancer/RECRUITING query) — confirmed by byte-identical study
+   content returned across three differently-parameterized requests.
+2. **Direct single-study API endpoint**
+   (`/api/v2/studies/{NCT_ID}`) — rejected outright by the available
+   fetch tool as an unseen/unreachable URL, even for a real NCT ID
+   (`NCT01078090`) sourced from a technical article specifically about
+   real posted-results data.
+3. **Human-readable study page** (`clinicaltrials.gov/study/{NCT_ID}`)
+   — returned an empty JavaScript application shell with no data; the
+   real content is fetched client-side after page load, which the
+   available fetch tool cannot execute.
+
+This is a tooling/environment constraint, not a data-availability
+problem — ClinicalTrials.gov itself has hundreds of thousands of
+studies with posted results; this session's specific fetch tooling
+could not reach any of them.
+
+### What was built instead: a reproducible script for an unrestricted environment
+
+`scripts/validate_real_clinicaltrials_data.py` — run from any machine
+with real network access to `clinicaltrials.gov` (a developer's
+laptop, CI, etc.). It:
+
+1. Fetches a small, controlled sample of real studies with
+   `hasResults=true` (using the real `AREA[HasResults]true` advanced
+   filter, newly added to the adapter this session — see below), via
+   the actual `ClinicalTrialsAdapter`, not a re-implementation.
+2. Saves raw JSON per study, verbatim, to
+   `data/clinicaltrials_raw/real_results_run_<timestamp>/`.
+3. Extracts real `OutcomeRecord`s (title, parameter, unit, timeframe,
+   group, value) with full `Provenance`, via the same
+   `extract_outcome_records()` already covered by mock tests.
+4. Saves normalized records separately to
+   `data/clinicaltrials_normalized/real_results_run_<timestamp>/records.csv`.
+5. Runs the existing classifier and writes `audit_summary.json` +
+   `audit_report.md`, explicitly listing every unclassified or
+   low-confidence row as **requiring manual spot-check** — the script
+   does not claim classification correctness on its own.
+6. Fails loudly (a real `HTTPError`/`URLError`) if network access
+   isn't available, rather than falling back to any mock or synthetic
+   data. **Verified this session**: running it from this sandbox
+   produces `urllib.error.HTTPError: HTTP Error 403: Forbidden` from
+   the sandbox's own egress proxy — the correct, honest failure mode,
+   not a silent success with fake data.
+
+### Adapter change this session
+
+`src/singularity/sources/clinicaltrials.py`: added `filter_advanced`
+support to `build_request_url`, `fetch_studies_page`, `iter_all_studies`,
+and `ClinicalTrialsAdapter.fetch_outcome_records`, so a real run can
+pass `filter_advanced="AREA[HasResults]true"` — the correct, real
+ClinicalTrials.gov mechanism for restricting to studies with posted
+results (sourced from a technical article documenting real API usage,
+cross-referenced against the official field reference). New mock test:
+`test_build_request_url_supports_filter_advanced_for_has_results`.
+Full suite: 34/34 passing.
+
+### Explicit scope boundary (unchanged from session 4, still true)
+
+The classifier's title-matching logic HAS real-data validation
+(session 4: 33 real titles, 1 bug found/fixed). The value/group
+extraction path (`extract_outcome_records()`'s measurement parsing)
+STILL has only mock-data validation
+(`tests/test_clinicaltrials_adapter.py`). This gate remains open until
+someone runs `scripts/validate_real_clinicaltrials_data.py` from an
+environment with real network access and manually spot-checks the
+output, the same way session 4's title validation was done.
 
 Establish a reliable and scientifically correct clinical-outcome data foundation.
 
@@ -283,68 +365,66 @@ These distinctions must be preserved rather than guessed.
 
 ## Current Priority
 
-A real-data validation run has now happened (session 4, see above) and
-found + fixed a real bug. This directly satisfies the roadmap gate
-"validate the real-data pipeline before large-scale ingestion,
-additional APIs, ML models, or UI work." Remaining before that gate is
-fully closed: the value/group extraction path
-(`extract_outcome_records()`'s measurement parsing) is still validated
-only against mock data, because no study with `hasResults: true` was
-reachable this session. That specific piece — not the classifier
-itself, which now has real-data validation — is the actual remaining
-gap.
+Value/group extraction validation is now **explicitly blocked by this
+environment**, not merely "not yet done" — three independent access
+paths were tried and exhausted this session (see "Session 5 Summary"
+above). A reproducible script (`scripts/validate_real_clinicaltrials_data.py`)
+is ready for a human to run from an environment with real network
+access. Per instruction, no large-scale ingestion, additional sources,
+ML/modeling, or UI work should begin until this gate is closed by
+running that script and spot-checking its output.
 
 ## Tests
 
-`pytest tests/` — 33/33 passing:
-* `tests/test_endpoints.py` (15, +2 this session) — classification
-  rules incl. the real-data regression test for the follow-up-ceiling
-  bug found this session.
+`pytest tests/` — 34/34 passing:
+* `tests/test_endpoints.py` (15) — classification rules incl. the
+  real-data regression test for the follow-up-ceiling bug (session 4).
 * `tests/test_ingest_and_audit.py` (9) — CSV ingestion validation
   failure modes and end-to-end audit, mock fixtures.
-* `tests/test_clinicaltrials_adapter.py` (9) — ClinicalTrials.gov
-  adapter (URL building, pagination, provenance capture, outcome
-  extraction, malformed-value handling), mock HTTP transport.
+* `tests/test_clinicaltrials_adapter.py` (10, +1 this session) —
+  ClinicalTrials.gov adapter incl. the new `filter_advanced` support.
 
-Additionally, this session ran the classifier against 33 REAL
-ClinicalTrials.gov outcome titles (not mock fixtures) — see "Session 4
-Summary" above and `data/clinicaltrials_normalized/`.
+Session 4 additionally ran the classifier against 33 REAL
+ClinicalTrials.gov outcome titles. Session 5 could not add a
+value/group real-data run — see Blockers below.
 
 ## Blockers
 
-* **No study with posted results (`hasResults: true`) was reachable
-  this session**, due to the fetch-tool caching constraint described
-  above (only one query's results were obtainable, and none of those 7
-  studies have posted results). This blocks real-data validation of
-  the value/group extraction path specifically — the title-
-  classification path IS now validated on real data.
+* **Value/group extraction (`extract_outcome_records()`'s measurement
+  parsing) has no real-data validation, and this environment cannot
+  provide one.** Three independent, exhausted attempts this session
+  (parameterized API queries, single-study endpoint, human-readable
+  study page) all confirmed the available fetch tooling cannot reach
+  any study with posted results. This is now documented as blocked by
+  environment, not as an open task — see `scripts/validate_real_clinicaltrials_data.py`
+  for the human-runnable resolution.
 * **This sandbox's network egress does not include `clinicaltrials.gov`**
-  for the code-execution environment itself (the adapter's own `urllib`
-  HTTP path). This session's real data was obtained via a
-  broader-access fetch tool and hand-transcribed into
-  `data/clinicaltrials_raw/`, not via the adapter's own live HTTP call.
+  for the code-execution environment's own `urllib` calls either —
+  verified again this session: running the new validation script here
+  produces a real `HTTP Error 403: Forbidden` from the sandbox's own
+  egress proxy.
 * The 5,165-row / 801-classified counts recorded elsewhere in this
   file remain unverified legacy notes and must not be cited as current.
 
 ## Next Recommended Task
 
-1. Obtain a real study with `hasResults: true` (e.g. by a human running
-   `ClinicalTrialsAdapter().fetch_outcome_records(filter_overall_status=["COMPLETED"], max_pages=1)`
-   from an environment with real network access, or by supplying such
-   a study's raw JSON directly) and validate
-   `extract_outcome_records()`'s value/group parsing against it the
-   same way the classifier was validated this session — real data,
-   manual spot-check, document errors, fix, regression-test.
-2. Once that's done, both halves of the ClinicalTrials.gov pipeline
-   (classification AND value/group extraction) will have real-data
-   validation, fully closing the roadmap gate.
-3. Only then proceed to large-scale ingestion, additional sources
+1. **A human runs `scripts/validate_real_clinicaltrials_data.py`** from
+   a machine/CI with real network access to `clinicaltrials.gov`, e.g.:
+   `python3 scripts/validate_real_clinicaltrials_data.py --condition "non-small cell lung cancer" --status COMPLETED --page-size 10 --max-pages 1`
+2. Manually spot-check every row the script flags in `audit_report.md`
+   against the real ClinicalTrials.gov study page for that NCT ID.
+3. Report findings back (or update `docs/autonomous_state.md` and add
+   regression tests directly) the same way session 4 did for the
+   title-classification bug.
+4. Only once both classifier AND value/group extraction have real-data
+   validation: proceed to large-scale ingestion, additional sources
    (PubMed/NCBI, OpenAlex, FDA, PubChem, ChEMBL, UniProt, Open
-   Targets), ML modeling, or UI work, per explicit instruction.
+   Targets), ML modeling, or UI work.
 
 ## Human Decisions Required
 
-* Can a real study with posted results be supplied (NCT ID, or raw
-  JSON), or can the fetch-tool/network constraints described above be
-  resolved, so the value/group extraction path can get the same
-  real-data validation the classifier just received?
+* Can `scripts/validate_real_clinicaltrials_data.py` be run from an
+  environment with real network access (your machine, CI, a
+  reconfigured sandbox), and its output reported back or committed
+  directly? This is the one remaining step to close Phase 1's
+  real-data validation gate.

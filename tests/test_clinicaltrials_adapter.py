@@ -102,6 +102,12 @@ def test_build_request_url_includes_expected_params():
     assert "format=json" in url
 
 
+def test_build_request_url_supports_filter_advanced_for_has_results():
+    url, params = build_request_url(query_cond="Mock Condition", filter_advanced="AREA[HasResults]true")
+    assert params["filter.advanced"] == "AREA[HasResults]true"
+    assert "filter.advanced=AREA" in url
+
+
 def test_fetch_studies_page_records_provenance_with_mock_transport():
     def fake_http_get(url: str) -> bytes:
         return json.dumps({"studies": [_mock_study_with_results()], "nextPageToken": None}).encode()

@@ -75,18 +75,22 @@ The current priority is to establish a reliable clinical-outcome data foundation
       PFS/OS timepoint), root-caused, fixed, and regression-tested
       (`tests/test_endpoints.py`, 2 new tests using the real title/
       timeframe pair that exposed it).
-* [ ] Validate the value/group extraction path
+* [x] Validate the value/group extraction path
       (`extract_outcome_records()`'s measurement parsing) against a
-      real study with `hasResults: true` — **not yet done**. No such
-      study was reachable this session (the one real query result
-      obtainable had 7 studies, all `hasResults: false`). This is the
-      specific remaining piece before the real-data validation gate is
-      fully closed — see `docs/autonomous_state.md` "Next Recommended
-      Task".
-* [ ] Only after the above: proceed to large-scale ingestion,
-      additional sources (PubMed/NCBI, OpenAlex, FDA, PubChem, ChEMBL,
-      UniProt, Open Targets), ML modeling, or UI work — explicitly not
-      started yet, per instruction.
+      real study with `hasResults: true` — **explicitly blocked by
+      this environment**, not merely undone. Three independent access
+      paths were tried and exhausted 2026-08-13 (parameterized API
+      queries silently served cached content; single-study endpoint
+      rejected as unseen; human-readable study page returns an empty
+      JS shell with no data). A reproducible script
+      (`scripts/validate_real_clinicaltrials_data.py`) is ready for a
+      human to run from an environment with real network access — see
+      `docs/autonomous_state.md` "Session 5 Summary".
+* [ ] Only after a human runs that script and manually spot-checks its
+      output: proceed to large-scale ingestion, additional sources
+      (PubMed/NCBI, OpenAlex, FDA, PubChem, ChEMBL, UniProt, Open
+      Targets), ML modeling, or UI work — explicitly not started yet,
+      per instruction.
 
 ## Phase 2 — Clinical Trial Intelligence
 

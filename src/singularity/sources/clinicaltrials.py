@@ -67,11 +67,18 @@ def build_request_url(
     query_term: Optional[str] = None,
     filter_overall_status: Optional[list[str]] = None,
     filter_ids: Optional[list[str]] = None,
+    filter_advanced: Optional[str] = None,
     page_size: int = 50,
     page_token: Optional[str] = None,
 ) -> tuple[str, dict]:
     """Build the exact request URL and the query params dict used to
     build it, so both can be stored as provenance.
+
+    `filter_advanced` accepts ClinicalTrials.gov's advanced filter
+    syntax, e.g. `"AREA[HasResults]true"` to restrict to studies that
+    have posted results (necessary for any real validation of
+    `extract_outcome_records`, since studies without posted results
+    have no `resultsSection` at all).
     """
     params: dict[str, str] = {"pageSize": str(page_size), "format": "json"}
     if query_cond:
@@ -82,6 +89,8 @@ def build_request_url(
         params["filter.overallStatus"] = ",".join(filter_overall_status)
     if filter_ids:
         params["filter.ids"] = ",".join(filter_ids)
+    if filter_advanced:
+        params["filter.advanced"] = filter_advanced
     if page_token:
         params["pageToken"] = page_token
 
@@ -95,6 +104,7 @@ def fetch_studies_page(
     query_term: Optional[str] = None,
     filter_overall_status: Optional[list[str]] = None,
     filter_ids: Optional[list[str]] = None,
+    filter_advanced: Optional[str] = None,
     page_size: int = 50,
     page_token: Optional[str] = None,
     http_get: HttpGet = _default_http_get,
@@ -112,6 +122,7 @@ def fetch_studies_page(
         query_term=query_term,
         filter_overall_status=filter_overall_status,
         filter_ids=filter_ids,
+        filter_advanced=filter_advanced,
         page_size=page_size,
         page_token=page_token,
     )
@@ -134,6 +145,7 @@ def iter_all_studies(
     query_term: Optional[str] = None,
     filter_overall_status: Optional[list[str]] = None,
     filter_ids: Optional[list[str]] = None,
+    filter_advanced: Optional[str] = None,
     page_size: int = 50,
     max_pages: Optional[int] = None,
     min_interval_seconds: float = DEFAULT_MIN_INTERVAL_SECONDS,
@@ -152,6 +164,7 @@ def iter_all_studies(
             query_term=query_term,
             filter_overall_status=filter_overall_status,
             filter_ids=filter_ids,
+            filter_advanced=filter_advanced,
             page_size=page_size,
             page_token=page_token,
             http_get=http_get,
@@ -267,6 +280,7 @@ class ClinicalTrialsAdapter:
         query_term: Optional[str] = None,
         filter_overall_status: Optional[list[str]] = None,
         filter_ids: Optional[list[str]] = None,
+        filter_advanced: Optional[str] = None,
         page_size: int = 50,
         max_pages: Optional[int] = None,
     ) -> list[OutcomeRecord]:
@@ -276,6 +290,7 @@ class ClinicalTrialsAdapter:
             query_term=query_term,
             filter_overall_status=filter_overall_status,
             filter_ids=filter_ids,
+            filter_advanced=filter_advanced,
             page_size=page_size,
             max_pages=max_pages,
             http_get=self._http_get,
