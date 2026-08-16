@@ -77,20 +77,46 @@ The current priority is to establish a reliable clinical-outcome data foundation
       timeframe pair that exposed it).
 * [x] Validate the value/group extraction path
       (`extract_outcome_records()`'s measurement parsing) against a
-      real study with `hasResults: true` — **explicitly blocked by
-      this environment**, not merely undone. Three independent access
-      paths were tried and exhausted 2026-08-13 (parameterized API
-      queries silently served cached content; single-study endpoint
-      rejected as unseen; human-readable study page returns an empty
-      JS shell with no data). A reproducible script
-      (`scripts/validate_real_clinicaltrials_data.py`) is ready for a
-      human to run from an environment with real network access — see
-      `docs/autonomous_state.md` "Session 5 Summary".
-* [ ] Only after a human runs that script and manually spot-checks its
-      output: proceed to large-scale ingestion, additional sources
-      (PubMed/NCBI, OpenAlex, FDA, PubChem, ChEMBL, UniProt, Open
-      Targets), ML modeling, or UI work — explicitly not started yet,
-      per instruction.
+      real study with `hasResults: true` — the human ran real
+      extraction externally (Google Colab, 2026-08-14): 20 real
+      completed studies, 20/20 hasResults=true, 3,552 real
+      OutcomeRecords, 3,497 flagged for review. `records.csv` and
+      `audit_report.md` were provided and used directly for the
+      analysis and fix cycle below — this environment's own network
+      constraint (documented in session 5) no longer blocks progress,
+      since the human's environment supplied the real data instead.
+* [x] Analyze the flagged rows, cluster into failure-mode patterns,
+      and get human approval before touching the classifier — done
+      2026-08-14: 15 distinct patterns identified and quantified from
+      the real 3,497 flagged rows, categorized (A: bug / B: genuine
+      ambiguity / C: correctly excluded / D: missing taxonomy / E:
+      extraction issue / F: long tail), with a FIX NOW / KEEP AS IS /
+      INVESTIGATE / EXCLUDE recommendation. See
+      `docs/autonomous_state.md` "Session 6 Summary" (the analysis
+      itself, prior to any code change, isn't separately filed — its
+      conclusions are what session 6 implemented).
+* [x] Implement ONLY the approved Category A fixes (ORR/CR+PR/RECIST
+      synonyms; year-based fixed-timepoint OS phrasing) — done
+      2026-08-14. 13 new regression tests (7 + 4 + 2 for two decimal-
+      number bugs found along the way, one of which was a pre-existing,
+      previously-undetected bug from session 4). Full suite: 47/47
+      passing. Re-validated against the real 3,552-record dataset with
+      a complete row-level before/after diff — see
+      `docs/autonomous_state.md` "Session 6 Summary" for the exact
+      numbers (27 rows gained correct classification, 2 more fixed by
+      the decimal-month bug fix, 20 rows corrected from wrongly-
+      confident to correctly-flagged; net flagged count unchanged at
+      3,497 by coincidence of these effects offsetting).
+* [ ] **The classifier is explicitly NOT validated or production-ready.**
+      119 rows from session 6's analysis (Category B/D/F: EFS, pCR,
+      BOR, TTR, CRi, OR-by-modality fragmentation, and a 67-row
+      miscellaneous long tail) remain unresolved and require a human
+      scoping decision before any further classifier changes.
+* [ ] Only after that scoping decision (and any resulting fixes are
+      implemented, tested, and re-validated the same way): proceed to
+      large-scale ingestion, additional sources (PubMed/NCBI, OpenAlex,
+      FDA, PubChem, ChEMBL, UniProt, Open Targets), ML modeling, or UI
+      work — explicitly not started yet, per instruction.
 
 ## Phase 2 — Clinical Trial Intelligence
 

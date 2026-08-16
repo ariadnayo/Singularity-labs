@@ -41,17 +41,38 @@ _NON_CANONICAL_PATTERNS = [
     r"\badverse event\b",
 ]
 
-_FIXED_TIMEPOINT_RE = re.compile(r"\b(\d{1,3})[\s-]?month", re.IGNORECASE)
+_FIXED_TIMEPOINT_MONTH_RE = re.compile(r"(?<![\d.])(\d{1,3})[\s-]?month", re.IGNORECASE)
+_FIXED_TIMEPOINT_YEAR_RE = re.compile(r"(?<![\d.])(\d{1,3})[\s-]?year", re.IGNORECASE)
+
+# Explicit, context-anchored synonyms for ORR (CR+PR rate under RECIST or
+# equivalent criteria is the clinical definition of ORR). Deliberately
+# NOT a bare "CR" or "PR" match -- each pattern requires both concepts
+# to appear together, joined as a response-rate phrase, so an isolated
+# mention of "CR" (e.g. hematologic "CR or CRi") elsewhere in a title
+# does not trigger this. Found via real-data validation 2026-08-14 (see
+# docs/autonomous_state.md): 22 real ClinicalTrials.gov rows used one of
+# these phrasings instead of the literal words "objective response rate".
+_ORR_SYNONYM_PATTERNS = [
+    r"\bcomplete and partial response rate\b",
+    r"\bobjective tumor response rate\b",
+    r"\bcomplete or partial (objective )?(tumor )?response\b",
+    r"\bcomplete response\s*[\[\(]?cr[\]\)]?\s*(or|and)\s*partial response\s*[\[\(]?pr[\]\)]?\b",
+]
 
 
 def _matches_any(patterns: list[str], text: str) -> bool:
     return any(re.search(p, text, re.IGNORECASE) for p in patterns)
 
 
-def _fixed_timepoint_months(record: OutcomeRecord) -> "str | None":
-    """Return e.g. '6' if the title, or an unambiguous timeframe,
-    indicates a fixed-timepoint measurement (e.g. 'at 6 months'), else
-    None.
+def _fixed_timepoint_suffix(record: OutcomeRecord) -> "str | None":
+    """Return a subtype suffix (e.g. '6' for 6 months, '1yr' for 1 year)
+    if the title, or an unambiguous timeframe, indicates a fixed-
+    timepoint measurement (e.g. 'at 6 months', 'at 1 Year'), else None.
+
+    Month and year suffixes are deliberately formatted differently
+    ('6' vs '1yr') so a downstream consumer can never confuse OS6
+    (6 months) with a hypothetical OS6 meaning 6 years -- the year
+    variant is always explicit.
 
     BUG FOUND during real-data validation (2026-08-13, see
     docs/autonomous_state.md): a real ClinicalTrials.gov trial
@@ -59,24 +80,29 @@ def _fixed_timepoint_months(record: OutcomeRecord) -> "str | None":
     with timeframe "Up to approximately 58 months" -- boilerplate
     describing the study's overall follow-up ceiling, which applies to
     nearly every outcome in the trial, not a per-outcome fixed
-    timepoint. The original version of this function matched "58
-    months" in that boilerplate and mis-flagged a plain median PFS as
-    a fixed-timepoint "PFS58" subtype. Fix: only trust the title for
-    this signal; the timeframe field is only used as a fallback, and
-    only when it is NOT phrased as a maximum/ceiling ("up to ...",
-    "approximately ...") -- those phrasings describe study-wide
-    follow-up duration, not a specific assessment timepoint.
+    timepoint. Fix: only trust the title for this signal; the
+    timeframe field is only used as a fallback, and only when it is
+    NOT phrased as a maximum/ceiling ("up to ...", "approximately
+    ..."). This guard applies equally to the year-based pattern added
+    2026-08-14, to avoid reintroducing the same bug in years instead
+    of months.
     """
-    m = _FIXED_TIMEPOINT_RE.search(record.title)
+    m = _FIXED_TIMEPOINT_MONTH_RE.search(record.title)
     if m:
         return m.group(1)
+    y = _FIXED_TIMEPOINT_YEAR_RE.search(record.title)
+    if y:
+        return f"{y.group(1)}yr"
 
     timeframe = record.timeframe or ""
     if re.search(r"\bup to\b|\bapproximately\b", timeframe, re.IGNORECASE):
         return None
-    m = _FIXED_TIMEPOINT_RE.search(timeframe)
+    m = _FIXED_TIMEPOINT_MONTH_RE.search(timeframe)
     if m:
         return m.group(1)
+    y = _FIXED_TIMEPOINT_YEAR_RE.search(timeframe)
+    if y:
+        return f"{y.group(1)}yr"
     return None
 
 
@@ -116,7 +142,7 @@ def classify_outcome(record: OutcomeRecord) -> ClassificationResult:
             reason="Title explicitly refers to duration of response.",
         )
 
-    fixed_month = _fixed_timepoint_months(record)
+    fixed_month = _fixed_timepoint_suffix(record)
 
     # 3. PFS family.
     if re.search(r"\bprogression[\s-]free survival\b|\bpfs\b", title, re.IGNORECASE):
@@ -139,8 +165,24 @@ def classify_outcome(record: OutcomeRecord) -> ClassificationResult:
             reason="Title refers to progression-free survival without a fixed-timepoint/rate qualifier.",
         )
 
-    # 4. OS family.
-    if re.search(r"\boverall survival\b|\bos\b", title, re.IGNORECASE) and "response" not in title.lower():
+    # 4. OS family. In addition to explicit "overall survival"/"OS"
+    # wording, "Percentage of Participants Surviving at N Year(s)" is a
+    # real, recurring ClinicalTrials.gov phrasing for a fixed-timepoint
+    # OS rate that never uses the words "overall survival" or "OS" at
+    # all (found via real-data validation 2026-08-14). This synonym is
+    # deliberately gated on an actual detected fixed timepoint --
+    # "Number of Participants Surviving" with no timepoint number must
+    # NOT fall through to a confident median-OS classification, since a
+    # bare survivor count is not a median survival time. Anchored to
+    # the specific idiom "participants surviving" rather than a bare
+    # "surviving" to avoid over-matching unrelated titles.
+    mentions_participants_surviving = bool(re.search(r"\bparticipants surviving\b", title, re.IGNORECASE))
+    has_title_timepoint = bool(_FIXED_TIMEPOINT_MONTH_RE.search(title) or _FIXED_TIMEPOINT_YEAR_RE.search(title))
+    is_surviving_at_timepoint = mentions_participants_surviving and has_title_timepoint
+
+    if (
+        re.search(r"\boverall survival\b|\bos\b", title, re.IGNORECASE) or is_surviving_at_timepoint
+    ) and "response" not in title.lower():
         if fixed_month or "rate" in title.lower() or "probability" in unit:
             return ClassificationResult(
                 endpoint="OS",
@@ -174,13 +216,28 @@ def classify_outcome(record: OutcomeRecord) -> ClassificationResult:
             reason="Title refers to disease-free survival without a fixed-timepoint/rate qualifier.",
         )
 
-    # 6. ORR (checked after DOR/DCR/CBR/TTP exclusions above).
+    # 6. ORR: literal mentions, or an explicit CR+PR/RECIST synonym
+    #    (checked after DOR/DCR/CBR/TTP exclusions above, so a hematologic
+    #    "CR or CRi" title etc. never reaches this branch).
     if re.search(r"\bobjective response rate\b|\boverall response rate\b|\borr\b", title, re.IGNORECASE):
         return ClassificationResult(
             endpoint="ORR",
             subtype=None,
             confident=True,
             reason="Title explicitly refers to objective/overall response rate.",
+        )
+    if _matches_any(_ORR_SYNONYM_PATTERNS, title):
+        return ClassificationResult(
+            endpoint="ORR",
+            subtype=None,
+            confident=True,
+            reason=(
+                "Title uses an explicit CR+PR/RECIST-defined response-rate "
+                "synonym for ORR (e.g. 'Complete and Partial Response Rate "
+                "... RECIST ...'), not the literal words 'objective/overall "
+                "response rate' -- recognized as an equivalent phrasing, "
+                "not inferred."
+            ),
         )
 
     # 7. Nothing matched -> unclassified. Do not guess.
