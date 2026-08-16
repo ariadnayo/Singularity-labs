@@ -2,7 +2,7 @@
 
 ## Last Updated
 
-2026-08-14 (session 6)
+2026-08-14 (session 8)
 
 ## Current Phase
 
@@ -356,6 +356,77 @@ beyond what this session's dataset already exercised implicitly (i.e.,
 this session re-validated using already-extracted real records from
 your Colab run, not a fresh live extraction).
 
+## Session 8 Summary: EFS/pCR/BOR Named Exclusions Implemented and Verified (2026-08-14)
+
+**Scope: exactly item #1 of your session-7 decision, nothing else.**
+TTR left unclassified with no special handling (item #2, unchanged).
+Hematologic CRi/leukemia-style response left as a documented future
+scope decision (item #3, unchanged). OR-by-modality left unclassified,
+no schema/classifier change (item #4, unchanged).
+
+### What changed
+
+Added EFS, pCR (incl. tpCR/bpCR/"Total pCR" phrasings), and BOR to
+`_NON_CANONICAL_PATTERNS` in `src/singularity/endpoints.py` — the same
+mechanism already used for DCR/CBR/TTP/QoL/AE. Deliberately did NOT
+add a bare `\bpcr\b` or `\bbor\b` pattern: bare "PCR" collides with the
+unrelated molecular-biology assay (polymerase chain reaction), and
+matching it would produce a misleading `reason` string even though the
+classification outcome (unclassified) would be unchanged either way.
+Only the specific real-world oncology phrasings found in the actual
+dataset (tpCR, bpCR, "pathological complete response," "best overall
+response") are matched.
+
+Also updated `docs/data_dictionary.md`'s "Related Measures That
+Require Careful Handling" list with the same three additions and their
+rationale, and the module docstring in `endpoints.py`.
+
+4 new regression tests: EFS-not-DFS (4 real titles), pCR-not-ORR (3
+real titles), BOR-not-ORR (1 real title), and a conservatism guard
+confirming a bare "PCR" (molecular assay context) does not trigger the
+pCR-specific reason text. **Full suite: 51/51 passing.**
+
+### Re-validation against the real dataset — exact row-level accounting
+
+Re-ran against the same real 3,552-record/20-study dataset
+(`data/clinicaltrials_normalized/real_results_run_20260814_colab/records.csv`)
+and did a complete row-by-row diff against the session-6 baseline:
+
+- **`endpoint`, `subtype`, and `confident` are byte-identical for all
+  3,552 rows.** Confirmed zero rows changed classification outcome —
+  exactly as expected, since this change only adds new *named*
+  exclusions for rows that were already correctly unclassified.
+- Top-line counts unchanged: 55 confidently classified, 3,497 flagged,
+  same endpoint distribution (`PFS: 39, OS: 26, ORR: 26, DOR: 1`).
+- **`reason` text changed for 307 rows total** — reported precisely,
+  not rounded down:
+  - **33 rows**: the intended EFS/pCR/BOR rows, which now carry a
+    specific, documented reason instead of the generic "no canonical
+    endpoint pattern matched."
+  - **274 rows**: pre-existing DCR/CBR/TTP/QoL/AE rows whose `reason`
+    text also changed, but *only cosmetically* — they matched the same
+    patterns as before and still return the same
+    endpoint/subtype/confident; their reason string changed only
+    because it shares a single generic example-list template
+    (`"e.g. DCR, CBR, TTP, QoL, AE"` → `"...EFS, pCR, BOR"`) with the
+    newly-added patterns. Disclosed rather than hidden or rounded into
+    the "33 rows affected" headline number.
+
+### Explicit non-scope, confirmed unchanged this session
+
+- TTR: still fully unclassified, no pattern added, no special-case
+  logic. 1 row of evidence remains insufficient per your decision.
+- Hematologic CRi / leukemia-style "Complete or Partial Remission":
+  untouched. Still an open, documented scope question (does
+  Singularity Labs cover hematologic malignancies?) — not resolved by
+  this session.
+- OR-by-modality (18 rows, fragmented ORR-family data by assessment
+  modality × biomarker subgroup): untouched. Still unclassified,
+  pending a future aggregation/data-model decision, not a classifier
+  change.
+- No new canonical endpoints. No ML, additional data sources, or UI
+  work started.
+
 ## Completed
 
 * Initial autonomous development instructions created.
@@ -505,76 +576,120 @@ Some ORR-related rows represent duration of objective response and therefore may
 
 These distinctions must be preserved rather than guessed.
 
+## Session 7 Summary: Taxonomy/Scoping Analysis Complete, Awaiting Human Decision (2026-08-14)
+
+**Analysis only — no code changed.** Full document:
+`docs/endpoint_taxonomy_analysis.md`.
+
+Re-clustered the real 3,552-record dataset's fully-unclassified rows
+against the current (post-session-6) classifier, excluding everything
+already confirmed correctly-excluded in session 5/6. Result: **115
+rows / 40 unique titles / 11 trials** (close to session 5's 119
+estimate; the small difference is disclosed and explained in the
+document itself — a couple of titles moved into "already has a
+canonical endpoint, just low-confidence" after session 6's fixes, plus
+a plural-regex miss in the analysis script itself, both accounted for
+rather than hidden).
+
+15 distinct endpoint/measure families identified and quantified: BOR,
+pCR, EFS, OR-by-modality, biomarker/exploratory, local failure,
+biopsy-completion feasibility, tumor-size continuous change,
+operational/cost/hematologic-support, leukemia-style remission,
+hematologic CRi, generic unanchored "objective response," transfusion
+independence, TTR, and Duration of Disease Control.
+
+**Recommendation, pending your approval:**
+- Add EFS, pCR, and BOR as explicitly-named excluded subtypes (same
+  mechanism already used for DCR/CBR/TTP) — no new canonical endpoints,
+  just making already-correct behavior intentional and documented.
+- Everything else in the 115 rows: leave as-is (correctly excluded, or
+  insufficient volume to justify taxonomy action).
+- Three items explicitly flagged as needing YOUR decision, not
+  resolved by data alone: (1) whether hematologic CRi/leukemia-style
+  "remission" terminology warrants its own family — depends on whether
+  hematologic malignancies are in scope for Singularity Labs; (2)
+  whether/how OR-by-modality fragmentation should ever aggregate into
+  ORR — a schema design question, not a taxonomy question; (3) TTR —
+  only 1 row of evidence, revisit if it recurs at scale.
+
+No canonical endpoints (PFS/OS/ORR/DOR/DFS) were proposed for addition
+or change. No classification-rate change resulted from this document
+by design — it's a scoping analysis, not an implementation.
+
+**Status: awaiting your review and scoping decision before any further
+classifier implementation proceeds**, per instruction.
+
 ## Current Priority
 
-Session 5's data-integrity/tooling blocker was resolved externally: you
-ran the real-results extraction yourself (Google Colab, real network
-access), producing a real 20-study/3,552-record/3,497-flagged dataset.
-Session 6 analyzed it, implemented the 2 approved Category A fixes,
-and re-validated. **This does NOT mean the classifier is validated or
-production-ready** — session 5's Category B/D/F findings (EFS, pCR,
-BOR, TTR, CRi, OR-by-modality, 67-row long tail — 119 rows) are
-unresolved and require a scoping decision before further code changes.
-Per instruction, this cycle stops here for your review.
+Session 7 delivered a taxonomy/scoping analysis of the 115 remaining
+uncategorized rows (`docs/endpoint_taxonomy_analysis.md`). You reviewed
+it and made 4 explicit decisions; session 8 implemented exactly item
+#1 (EFS/pCR/BOR named exclusions) and stopped, per instruction. Items
+#2–#4 (TTR, hematologic CRi, OR-by-modality) remain deliberately
+untouched. **The classifier is still NOT validated or production-
+ready** — this was a narrow, approved documentation/exclusion change,
+not a completeness milestone.
 
 ## Tests
 
-`pytest tests/` — 47/47 passing:
-* `tests/test_endpoints.py` (28, +13 this session) — classification
-  rules incl. the session-4 follow-up-ceiling regression test, plus
-  session-6's ORR-synonym (7), year-based-OS (4), and decimal-number
-  mis-parse (2) regression tests.
+`pytest tests/` — 51/51 passing:
+* `tests/test_endpoints.py` (32, +4 this session) — classification
+  rules incl. session-6's ORR-synonym/year-based-OS/decimal-number
+  tests, plus session-8's EFS/pCR/BOR named-exclusion tests (using
+  real titles from the validation dataset) and the bare-"PCR"
+  conservatism guard.
 * `tests/test_ingest_and_audit.py` (9) — CSV ingestion validation
   failure modes and end-to-end audit, mock fixtures.
 * `tests/test_clinicaltrials_adapter.py` (10) — ClinicalTrials.gov
   adapter incl. `filter_advanced` support.
 
-Session 4 ran the classifier against 33 real titles. Session 6
-re-ran it against your real 3,552-record/20-study dataset with a full
-row-level before/after diff (see "Session 6 Summary" above) — the most
-thorough real-data validation to date, though still scoped to what the
-provided `records.csv` contains, not a fresh live extraction.
+Session 6 re-ran the classifier against your real 3,552-record/
+20-study dataset with a full row-level before/after diff. Session 8
+did the same again for this narrower change — see "Session 8 Summary"
+above for the exact row-level accounting (0 classification changes,
+307 reason-text changes, 33 of them the intended new exclusions).
 
 ## Blockers
 
 * **Value/group extraction (`extract_outcome_records()`) still has no
-  FRESH real-data validation from this specific codebase** — session
-  6's re-validation reused your already-extracted `records.csv`
-  (produced by your Colab run), which is real data, but doesn't
-  independently re-verify the extraction code path itself running
-  end-to-end from raw JSON in this environment. This sandbox's network
-  egress still does not include `clinicaltrials.gov` for that.
-* **119 rows (Category B/D/F from session 5) remain unresolved**: EFS
-  taxonomy (6 rows), pCR taxonomy (12 rows), BOR handling (15 rows),
-  OR-by-modality/biomarker-subgroup fragmentation (18 rows),
-  hematologic CRi/TTR (2 rows), and a 67-row miscellaneous long tail.
-  None of these were touched this session, per explicit instruction to
-  implement ONLY the 2 approved fixes.
+  FRESH real-data validation from this specific codebase** — sessions
+  6 and 8 both reused your already-extracted `records.csv`, not a
+  fresh live extraction run in an environment with real network
+  access. This sandbox's network egress still does not include
+  `clinicaltrials.gov`.
+* **94 rows remain from the original 115/119-row taxonomy analysis,
+  deliberately unresolved per your explicit decision**: TTR (1 row,
+  leave unclassified, no special handling), hematologic CRi /
+  leukemia-style remission (3 rows, documented future scope question),
+  OR-by-modality (18 rows, pending a future aggregation/data-model
+  decision), and the remaining ~72 rows across biomarker/exploratory,
+  local failure, biopsy-completion feasibility, tumor-size continuous
+  change, and operational/cost measures (all already confirmed
+  correctly excluded in the session-7 analysis, no action needed).
 * The 5,165-row / 801-classified counts recorded elsewhere in this
   file remain unverified legacy notes and must not be cited as current.
 
 ## Next Recommended Task
 
-1. **You (human) decide** on each of the 119 Category B/D/F rows from
-   session 5's analysis: which (if any) warrant taxonomy expansion
-   (EFS, pCR as named exclusions were recommended) vs. remain
-   deliberately unclassified vs. need individual review (the 67-row
-   long tail).
-2. Once scoped, implement only the approved subset, the same
-   incremental, tested, re-validated way session 6 did.
-3. Independently, consider running
+1. No further classifier changes are approved or pending — session 8
+   closes out the current approved scope. Any future classifier work
+   requires a new explicit decision from you (e.g. on hematologic
+   malignancy scope, or an OR-by-modality aggregation design).
+2. Independently, consider running
    `scripts/validate_real_clinicaltrials_data.py` fresh (or re-running
    your Colab extraction) to validate the extraction code path itself
    end-to-end, not just re-use the already-extracted CSV.
-4. Only once the classifier is explicitly approved as sufficient for
-   the current phase: proceed to large-scale ingestion, additional
+3. Per explicit instruction: no large-scale ingestion, additional
    sources (PubMed/NCBI, OpenAlex, FDA, PubChem, ChEMBL, UniProt, Open
-   Targets), ML modeling, or UI work.
+   Targets), ML modeling, or UI work has started, and none should start
+   without your explicit go-ahead.
 
 ## Human Decisions Required
 
-* Scoping decision on the 119 Category B/D/F rows (see above) — this
-  is the primary open decision blocking further classifier work.
+* None pending on the classifier itself right now — session 8 fully
+  implemented the one approved item and stopped. Future decisions
+  needed only if/when you want to revisit hematologic-malignancy scope
+  or OR-by-modality aggregation design.
 * Whether to re-run extraction fresh in an environment with real
   network access, to validate `extract_outcome_records()` end-to-end
   rather than via an already-extracted CSV.

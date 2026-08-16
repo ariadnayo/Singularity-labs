@@ -208,6 +208,19 @@ The following should not automatically be mapped to canonical endpoints without 
 * quality-of-life outcomes
 * adverse-event outcomes
 * tumor response subcategories
+* event-free survival (EFS) -- related to DFS but not equivalent; the
+  "event" definition is protocol-specific and typically broader than
+  DFS's disease-recurrence-specific framing. Explicitly excluded from
+  the classifier since 2026-08-14 (session 8) -- see
+  `docs/endpoint_taxonomy_analysis.md`.
+* pathological complete response (pCR, incl. tpCR/bpCR) -- related to
+  ORR but not equivalent; assessed via post-surgical pathology, not
+  RECIST imaging-based tumor-shrinkage criteria. Explicitly excluded
+  from the classifier since 2026-08-14 (session 8).
+* best overall response (BOR) -- related to ORR but not equivalent; a
+  categorical per-subject classification (CR/PR/SD/PD/NE), not itself
+  a numeric response rate. Explicitly excluded from the classifier
+  since 2026-08-14 (session 8).
 
 ---
 

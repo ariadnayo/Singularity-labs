@@ -13,8 +13,10 @@ Implements the rules in docs/data_dictionary.md and docs/architecture.md:
   because a title contains "response".
 - Ambiguous or related-but-distinct measures (disease control rate,
   clinical benefit rate, time to progression, quality-of-life outcomes,
-  adverse events, survival rate without a clear canonical anchor) are
-  left unclassified (endpoint=None) rather than guessed into a category.
+  adverse events, event-free survival, pathological complete response,
+  best overall response, survival rate without a clear canonical
+  anchor) are left unclassified (endpoint=None) rather than guessed
+  into a category.
 
 This module does not fabricate or assume data. It only classifies
 records that are passed to it.
@@ -39,6 +41,30 @@ _NON_CANONICAL_PATTERNS = [
     r"\bquality of life\b",
     r"\bqol\b",
     r"\badverse event\b",
+    # Added 2026-08-14 (session 8), per human-approved taxonomy analysis
+    # (docs/endpoint_taxonomy_analysis.md). These were already correctly
+    # left unclassified before this change -- no pattern matched them --
+    # this makes that exclusion explicit and documented instead of an
+    # accidental non-match, per the approved decision. Endpoint output
+    # is unchanged; only the classification `reason` becomes specific.
+    r"\bevent[\s-]free survival\b",  # EFS -- related to DFS but NOT
+    # equivalent: EFS's "event" definition is protocol-specific and
+    # typically broader than DFS's disease-recurrence-specific framing
+    # (may include any progression, second malignancy, or death).
+    r"\befs\b",
+    r"\bpathological complete response\b",  # pCR -- related to ORR but
+    r"\bpathologic complete response\b",  # NOT equivalent: assessed via
+    r"\btpcr\b",  # post-surgical pathology, not RECIST imaging-based
+    r"\bbpcr\b",  # tumor-shrinkage criteria. Deliberately not matching a
+    r"\btotal pcr\b",  # bare "pcr" -- that abbreviation collides with the
+    # unrelated molecular-biology assay "PCR" (polymerase chain
+    # reaction) and would produce a misleading `reason` string even
+    # though the classification outcome (unclassified) would be the same.
+    r"\bbest overall response\b",  # BOR -- related to ORR but NOT
+    # equivalent: BOR is a categorical per-subject classification
+    # (CR/PR/SD/PD/NE), not itself a numeric response rate. Deliberately
+    # not matching a bare "bor" for the same false-positive-labeling
+    # reason as bare "pcr" above.
 ]
 
 _FIXED_TIMEPOINT_MONTH_RE = re.compile(r"(?<![\d.])(\d{1,3})[\s-]?month", re.IGNORECASE)
@@ -125,8 +151,9 @@ def classify_outcome(record: OutcomeRecord) -> ClassificationResult:
             confident=False,
             reason=(
                 "Title matches a related-but-distinct measure "
-                "(e.g. DCR, CBR, TTP, QoL, AE) that must not be folded "
-                "into a canonical endpoint per data_dictionary.md."
+                "(e.g. DCR, CBR, TTP, QoL, AE, EFS, pCR, BOR) that must "
+                "not be folded into a canonical endpoint per "
+                "data_dictionary.md."
             ),
         )
 

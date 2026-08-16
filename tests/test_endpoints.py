@@ -341,6 +341,61 @@ def test_decimal_year_value_not_misparsed_as_smaller_integer_year():
     assert result.confident is True
 
 
+def test_efs_left_unclassified_not_merged_into_dfs():
+    """Human-approved decision (2026-08-14, docs/endpoint_taxonomy_analysis.md):
+    EFS is explicitly excluded, not merged into DFS. Uses real titles
+    from the session-6 real-data validation dataset."""
+    for title in [
+        "Event-Free Survival (EFS) - Percentage of Participants With an Event",
+        "Event-Free Survival",
+        "Percentage of Participants Event Free at 1 Year",
+        "Percentage of Participants Event Free at 2 Years",
+    ]:
+        r = _mock_record(title=title, parameter="NUMBER", unit="percentage of participants")
+        result = classify_outcome(r)
+        assert result.endpoint is None, title
+        assert result.endpoint != "DFS", title
+
+
+def test_pcr_left_unclassified_not_merged_into_orr():
+    """Human-approved decision: pCR is explicitly excluded, not merged
+    into ORR. Uses real titles from the session-6 real-data validation
+    dataset."""
+    for title in [
+        "Percentage of Participants With Breast Pathological Complete Response (bpCR)",
+        "Percentage of Participants With Total Pathological Complete Response (tpCR)",
+        "Percentage of Participants With Total pCR, Defined as Having pCR in Both Breast and Axilla, Using AJCC Staging System",
+    ]:
+        r = _mock_record(title=title, parameter="NUMBER", unit="percentage of participants")
+        result = classify_outcome(r)
+        assert result.endpoint is None, title
+        assert result.endpoint != "ORR", title
+
+
+def test_bor_left_unclassified_not_merged_into_orr():
+    """Human-approved decision: BOR is explicitly excluded, not merged
+    into ORR (BOR is categorical, not a rate). Uses the real title from
+    the session-6 real-data validation dataset."""
+    r = _mock_record(title="Number of Subjects With Best Overall Response (BOR)", parameter="COUNT_OF_PARTICIPANTS", unit="subjects")
+    result = classify_outcome(r)
+    assert result.endpoint is None
+    assert result.endpoint != "ORR"
+
+
+def test_bare_pcr_abbreviation_not_matched_to_avoid_molecular_assay_confusion():
+    """Conservatism guard: a bare 'PCR' (which could mean the unrelated
+    molecular-biology assay, polymerase chain reaction) is deliberately
+    NOT matched by the pCR non-canonical pattern -- only the specific
+    real-world oncology phrasings (tpCR, bpCR, 'pathological complete
+    response', 'total pCR') are matched. The row still ends up
+    unclassified (no canonical pattern matches "PCR" either), but not
+    via the pCR-specific reason, avoiding a misleading explanation."""
+    r = _mock_record(title="Real-Time PCR Detection of Circulating Tumor DNA", parameter="NUMBER", unit="copies/mL")
+    result = classify_outcome(r)
+    assert result.endpoint is None
+    assert "pathological" not in result.reason.lower()
+
+
 def test_summarize_counts_are_consistent():
     records = [
         _mock_record(title="Median Overall Survival", parameter="MEDIAN", unit="months"),

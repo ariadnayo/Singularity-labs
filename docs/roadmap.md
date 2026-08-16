@@ -107,12 +107,35 @@ The current priority is to establish a reliable clinical-outcome data foundation
       the decimal-month bug fix, 20 rows corrected from wrongly-
       confident to correctly-flagged; net flagged count unchanged at
       3,497 by coincidence of these effects offsetting).
-* [ ] **The classifier is explicitly NOT validated or production-ready.**
-      119 rows from session 6's analysis (Category B/D/F: EFS, pCR,
-      BOR, TTR, CRi, OR-by-modality fragmentation, and a 67-row
-      miscellaneous long tail) remain unresolved and require a human
-      scoping decision before any further classifier changes.
-* [ ] Only after that scoping decision (and any resulting fixes are
+* [x] Produce a taxonomy/scoping analysis of the remaining
+      uncategorized rows before touching the classifier further — done
+      2026-08-14 (session 7), `docs/endpoint_taxonomy_analysis.md`. 115
+      rows / 40 titles / 11 trials reclustered from real data, 15
+      distinct endpoint/measure families identified and quantified,
+      each assigned a category (map to existing endpoint / new
+      canonical endpoint / distinct subtype / leave unclassified) with
+      rationale. No canonical-endpoint additions recommended.
+* [x] Implement human-approved taxonomy decision, item #1 only (EFS,
+      pCR, BOR as named exclusions) — done 2026-08-14 (session 8).
+      Added to `_NON_CANONICAL_PATTERNS`, same mechanism as DCR/CBR/TTP.
+      4 new regression tests. Full suite: 51/51 passing. Re-validated:
+      `endpoint`/`subtype`/`confident` byte-identical for all 3,552
+      real rows (0 classification changes); 33 rows gained a specific,
+      documented reason string; 274 pre-existing rows got a cosmetic-
+      only reason-text update from a shared template string.
+* [ ] Items #2–#4 of the session-7 decision deliberately NOT
+      implemented, per explicit instruction: TTR stays unclassified,
+      no special handling (1 row). Hematologic CRi / leukemia-style
+      "Complete or Partial Remission" stays a documented open scope
+      question, not resolved (3 rows). OR-by-modality fragmentation
+      (18 rows) stays unclassified pending a future aggregation/
+      data-model decision, not a classifier change.
+* [ ] **The classifier is explicitly NOT validated or production-
+      ready.** No further classifier changes are approved or pending.
+      Any future work requires a new explicit decision from the human
+      (e.g. hematologic-malignancy scope, OR-by-modality aggregation
+      design).
+* [ ] Only after any such future decision (and resulting fixes are
       implemented, tested, and re-validated the same way): proceed to
       large-scale ingestion, additional sources (PubMed/NCBI, OpenAlex,
       FDA, PubChem, ChEMBL, UniProt, Open Targets), ML modeling, or UI
