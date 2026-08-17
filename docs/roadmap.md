@@ -143,7 +143,53 @@ The current priority is to establish a reliable clinical-outcome data foundation
 
 ## Phase 2 — Clinical Trial Intelligence
 
-* [ ] Build structured trial representation
+### Phase 2A — Trial/Data Architecture (2026-08-14, session 9)
+
+Human-approved architecture decisions: PostgreSQL for persistent
+storage, Python/FastAPI for the backend/API (not started yet), Next.js
++ TypeScript for the frontend (not started yet). Existing Python data/
+classification layer kept intact, built around rather than rewritten.
+
+* [x] Design a first-class `Trial` entity connecting protocol-level
+      ClinicalTrials.gov data to `OutcomeRecord` — `singularity.schema.Trial`,
+      linked to outcome records by `nct_id` (relational join, not
+      embedding).
+* [x] Extend the ClinicalTrials.gov adapter to extract `protocolSection`
+      fields — `singularity.sources.clinicaltrials.extract_trial` +
+      `ClinicalTrialsAdapter.fetch_trials`. Field-verification caveat
+      disclosed: only `nct_id` independently verified live this
+      project; other `protocolSection` fields based on documented
+      schema, not re-verified this session (web-fetch tooling
+      unavailable) — see `docs/autonomous_state.md` "Session 9 Summary".
+* [x] Design the PostgreSQL schema/migrations — `db/migrations/0001-0003`.
+      Observed data (`outcome_records`) and derived classifier output
+      (`endpoint_classifications`, versioned via `CLASSIFIER_VERSION`)
+      deliberately kept in separate tables. Verified against a real
+      local PostgreSQL 16 instance (migrations run cleanly, real
+      dataclass round-trip confirmed, FK/CHECK constraints confirmed
+      to actually reject bad data) — not just checked for SQL syntax.
+* [x] Mock fixtures and tests before relying on real network access —
+      `tests/test_trial_extraction.py` (7 tests, synthetic protocol
+      data). DB tests (`tests/test_db_schema.py`, 6 tests) skip
+      gracefully (not fail) when no PostgreSQL instance is reachable.
+* [x] Existing validated classifier preserved, not rewritten — only an
+      additive `CLASSIFIER_VERSION` constant was added (metadata only,
+      zero behavior change, confirmed by full suite passing unchanged).
+* [x] Full test suite passing: 64/64 (58 pre-existing + 6 new DB tests;
+      Trial-extraction tests bring the adapter/schema total to 65 lines
+      of new test coverage across two files).
+
+**What remains before Phase 2B (API layer)**: no ingestion-to-database
+orchestration code exists yet (the round-trip tests insert directly;
+there's no `ingest_trial_and_outcomes(study) -> None` pipeline
+function yet). No FastAPI service exists. No decision has been made on
+an ORM/migration-management tool (deferred to Phase 2B, since the
+choice depends on the API framework's own conventions). The
+`protocolSection` field-verification caveat above should be resolved
+(a live spot-check) before Phase 2B trusts `Trial` data at scale.
+
+### Phase 2 — remaining (not started)
+
 * [ ] Build trial search
 * [ ] Build trial filtering
 * [ ] Filter by disease

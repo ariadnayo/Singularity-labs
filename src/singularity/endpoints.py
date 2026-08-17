@@ -28,6 +28,16 @@ import re
 
 from .schema import ClassificationResult, OutcomeRecord
 
+# Identifies which version of the classification logic produced a
+# given ClassificationResult, so results persisted to a database (see
+# db/migrations/0003_create_endpoint_classifications.sql, Phase 2A) can
+# be tied to a specific classifier version rather than silently mixing
+# results from different sessions' fixes. Bump this string whenever
+# classify_outcome's logic changes in a way that could change output
+# (not for comment-only or docstring-only edits). Purely additive
+# metadata -- does not change any classification behavior.
+CLASSIFIER_VERSION = "2026-08-14-session8"
+
 # Related-but-distinct measures that must never be silently mapped to a
 # canonical endpoint, per docs/data_dictionary.md.
 _NON_CANONICAL_PATTERNS = [

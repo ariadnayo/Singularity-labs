@@ -83,6 +83,29 @@ Only the ClinicalTrials.gov adapter is implemented so far; the others
 are intentionally not started yet (see docs/roadmap.md) -- get the
 first one right and reproducible before adding more.
 
+### Trial entity (added Phase 2A, session 9)
+
+`singularity.schema.Trial` is a first-class, protocol-level entity
+distinct from `OutcomeRecord` (which represents a single outcome
+*measurement*). A `Trial` and its `OutcomeRecord`s are linked by
+`nct_id` -- a normal relational join (see the `trials`/`outcome_records`
+foreign key in the Persistence Layer section below), not embedding.
+
+`singularity.sources.clinicaltrials.extract_trial` maps
+`protocolSection` fields onto `Trial`, using the same
+`.get()`-with-`None`-default, never-fabricate approach as
+`extract_outcome_records`. **Field-verification caveat**: only
+`protocolSection.identificationModule.nctId` has been independently
+verified against a live API response in this project; the other
+`protocolSection` fields `extract_trial` reads
+(`statusModule`, `designModule`, `sponsorCollaboratorsModule`,
+`conditionsModule`, `armsInterventionsModule`) are based on the
+publicly documented API v2 schema but were not re-verified against a
+fresh live response in the session that wrote this code (web-fetch
+tooling was unavailable that session). Spot-check against a real
+response before trusting these fields at scale -- see
+`docs/autonomous_state.md` "Session 9 Summary".
+
 ### Environment constraint (important, not hypothetical)
 
 The sandboxed code-execution environment used in autonomous development
@@ -94,6 +117,36 @@ differently-configured environment actually running it. This is a real,
 verified constraint (confirmed by attempting the call and observing the
 network policy), not an assumption. See `docs/autonomous_state.md` for
 what was and wasn't actually run.
+
+---
+
+# Persistence Layer
+
+**Added in Phase 2A (2026-08-14, session 9).** Chosen: **PostgreSQL**,
+Python/FastAPI for the eventual API layer, Next.js/TypeScript for the
+eventual frontend — these are the human-approved Phase 2 architecture
+decisions. Only the persistence layer (this section) is built so far;
+the API and frontend layers are explicitly NOT started yet.
+
+Schema and migrations: `db/migrations/`. Full design rationale: `db/README.md`.
+
+Three tables, deliberately separated by the observed-vs-derived
+principle stated below:
+
+* `trials` — protocol-level metadata, mirrors `singularity.schema.Trial`.
+* `outcome_records` — raw, observed outcome measurements only, mirrors
+  `singularity.schema.OutcomeRecord`. Contains no classifier output.
+* `endpoint_classifications` — derived, versioned classifier output,
+  mirrors `singularity.schema.ClassificationResult`, tagged with
+  `singularity.endpoints.CLASSIFIER_VERSION` so re-classification runs
+  add history rather than silently overwriting it.
+
+Verified against a real local PostgreSQL 16 instance during
+development, not just checked for SQL syntax — see
+`docs/autonomous_state.md` "Session 9 Summary" and
+`tests/test_db_schema.py` for the reproducible, automated version of
+that verification. No ORM or migration-management tool has been
+chosen yet — that's a Phase 2B (API layer) decision.
 
 ---
 

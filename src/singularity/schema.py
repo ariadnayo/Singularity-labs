@@ -60,6 +60,58 @@ class OutcomeRecord:
 
 
 @dataclass(frozen=True)
+class Trial:
+    """Protocol-level representation of a single clinical trial,
+    distinct from its outcome measurements (`OutcomeRecord`).
+
+    A `Trial` and its `OutcomeRecord`s are linked by `nct_id` (a normal
+    relational join, not embedding) -- a trial has zero, one, or many
+    outcome records, and this deliberately doesn't duplicate that
+    one-to-many relationship inside the dataclass itself.
+
+    FIELD-VERIFICATION STATUS (2026-08-14, session 9): only
+    `nct_id` has been independently verified against a live
+    ClinicalTrials.gov API v2 response in this project (see
+    docs/autonomous_state.md, sessions 4/5/9).  This session's
+    other fields (`brief_title`, `official_title`, `overall_status`,
+    `phases`, `study_type`, `conditions`, `lead_sponsor`,
+    `interventions`, `start_date`, `completion_date`,
+    `enrollment_count`) are mapped using the publicly documented,
+    long-stable ClinicalTrials.gov API v2 schema, but this specific
+    session did NOT have web-fetch tooling available to re-verify them
+    against a fresh live response the way `identificationModule` and
+    `outcomesModule` were verified in earlier sessions. This is
+    disclosed, not hidden -- see
+    `src/singularity/sources/clinicaltrials.py::extract_trial` and
+    `docs/architecture.md` for the same caveat. Spot-check against a
+    real response before trusting these fields at scale in Phase 2B.
+
+    All fields except `nct_id` are optional: a real ClinicalTrials.gov
+    record may genuinely omit any of them (e.g. an ongoing trial has
+    no `completion_date` yet), and a missing field must be represented
+    as `None`, never guessed or defaulted to something plausible.
+    """
+
+    nct_id: str
+    brief_title: Optional[str] = None
+    official_title: Optional[str] = None
+    overall_status: Optional[str] = None  # e.g. RECRUITING, COMPLETED, TERMINATED
+    phases: Optional[list] = None  # e.g. ["PHASE2", "PHASE3"]
+    study_type: Optional[str] = None  # e.g. INTERVENTIONAL, OBSERVATIONAL
+    conditions: Optional[list] = None  # list[str]
+    lead_sponsor: Optional[str] = None
+    interventions: Optional[list] = None  # list[str] (intervention names)
+    start_date: Optional[str] = None  # as reported by the source; not parsed/normalized here
+    completion_date: Optional[str] = None
+    enrollment_count: Optional[int] = None
+    provenance: Optional[Provenance] = None
+
+    def __post_init__(self) -> None:
+        if not self.nct_id:
+            raise ValueError("Trial requires a non-empty nct_id")
+
+
+@dataclass(frozen=True)
 class ClassificationResult:
     """Result of attempting to classify a raw outcome into a canonical
     endpoint category.

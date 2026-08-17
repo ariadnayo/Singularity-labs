@@ -33,7 +33,7 @@ import urllib.request
 from datetime import datetime, timezone
 from typing import Callable, Iterable, Optional
 
-from ..schema import OutcomeRecord, Provenance
+from ..schema import OutcomeRecord, Provenance, Trial
 
 BASE_URL = "https://clinicaltrials.gov/api/v2/studies"
 SOURCE_NAME = "clinicaltrials.gov"
@@ -262,6 +262,88 @@ def extract_outcome_records(study: dict) -> list[OutcomeRecord]:
     return records
 
 
+def extract_trial(study: dict) -> Optional[Trial]:
+    """Map one raw ClinicalTrials.gov study record onto a `Trial`
+    (protocol-level metadata), distinct from its outcome measurements.
+
+    FIELD-VERIFICATION STATUS (see also the `Trial` docstring in
+    schema.py): only `protocolSection.identificationModule.nctId` has
+    been independently verified against a live API response in this
+    project. The other fields mapped below
+    (`statusModule.overallStatus`, `statusModule.startDateStruct.date`,
+    `statusModule.completionDateStruct.date`,
+    `designModule.studyType`, `designModule.phases`,
+    `sponsorCollaboratorsModule.leadSponsor.name`,
+    `conditionsModule.conditions`,
+    `armsInterventionsModule.interventions[].name`,
+    `designModule.enrollmentInfo.count`) use the publicly documented
+    ClinicalTrials.gov API v2 schema, but were not re-verified against
+    a fresh live response in the session that wrote this function
+    (web-fetch tooling was unavailable). Spot-check against a real
+    response before trusting these fields at scale. Every access below
+    uses `.get()` with a `None` default rather than assuming presence,
+    so a schema mismatch produces a missing field, not a crash or a
+    fabricated value.
+
+    Returns None (does not fabricate a Trial) if the study has no
+    NCT ID -- the one field this project has actually verified live.
+    """
+    protocol = study.get("protocolSection", {})
+    identification = protocol.get("identificationModule", {})
+    nct_id = identification.get("nctId")
+    if not nct_id:
+        return None
+
+    status = protocol.get("statusModule", {})
+    design = protocol.get("designModule", {})
+    sponsor_module = protocol.get("sponsorCollaboratorsModule", {})
+    conditions_module = protocol.get("conditionsModule", {})
+    arms_module = protocol.get("armsInterventionsModule", {})
+
+    lead_sponsor = sponsor_module.get("leadSponsor", {})
+    interventions_raw = arms_module.get("interventions", [])
+    interventions = [i.get("name") for i in interventions_raw if i.get("name")] or None
+
+    conditions = conditions_module.get("conditions") or None
+
+    phases = design.get("phases") or None
+
+    enrollment_info = design.get("enrollmentInfo", {})
+    enrollment_count = enrollment_info.get("count")
+
+    provenance_meta = study.get("_page_provenance", {})
+    provenance = Provenance(
+        source=SOURCE_NAME,
+        source_record_id=nct_id,
+        retrieved_at=provenance_meta.get("retrieved_at", ""),
+        request_url=provenance_meta.get("request_url", ""),
+        query_params=provenance_meta.get("query_params", {}),
+        raw={
+            "identificationModule": identification,
+            "statusModule": status,
+            "designModule": design,
+            "sponsorCollaboratorsModule": sponsor_module,
+            "conditionsModule": conditions_module,
+        },
+    )
+
+    return Trial(
+        nct_id=nct_id,
+        brief_title=identification.get("briefTitle"),
+        official_title=identification.get("officialTitle"),
+        overall_status=status.get("overallStatus"),
+        phases=phases,
+        study_type=design.get("studyType"),
+        conditions=conditions,
+        lead_sponsor=lead_sponsor.get("name"),
+        interventions=interventions,
+        start_date=(status.get("startDateStruct") or {}).get("date"),
+        completion_date=(status.get("completionDateStruct") or {}).get("date"),
+        enrollment_count=enrollment_count,
+        provenance=provenance,
+    )
+
+
 class ClinicalTrialsAdapter:
     """Concrete adapter implementing the `DataSourceAdapter` shape
     from `singularity.sources.base`.
@@ -298,3 +380,36 @@ class ClinicalTrialsAdapter:
         ):
             records.extend(extract_outcome_records(study))
         return records
+
+    def fetch_trials(
+        self,
+        *,
+        query_cond: Optional[str] = None,
+        query_term: Optional[str] = None,
+        filter_overall_status: Optional[list[str]] = None,
+        filter_ids: Optional[list[str]] = None,
+        filter_advanced: Optional[str] = None,
+        page_size: int = 50,
+        max_pages: Optional[int] = None,
+    ) -> list[Trial]:
+        """Fetch protocol-level Trial records (not outcome measurements
+        -- see `fetch_outcome_records` for those). A study missing an
+        NCT ID is skipped (`extract_trial` returns None for it), not
+        fabricated.
+        """
+        trials: list[Trial] = []
+        for study in iter_all_studies(
+            query_cond=query_cond,
+            query_term=query_term,
+            filter_overall_status=filter_overall_status,
+            filter_ids=filter_ids,
+            filter_advanced=filter_advanced,
+            page_size=page_size,
+            max_pages=max_pages,
+            http_get=self._http_get,
+            sleep=self._sleep,
+        ):
+            trial = extract_trial(study)
+            if trial is not None:
+                trials.append(trial)
+        return trials

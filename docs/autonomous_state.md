@@ -2,7 +2,7 @@
 
 ## Last Updated
 
-2026-08-14 (session 8)
+2026-08-14 (session 9)
 
 ## Current Phase
 
@@ -426,6 +426,115 @@ and did a complete row-by-row diff against the session-6 baseline:
   change.
 - No new canonical endpoints. No ML, additional data sources, or UI
   work started.
+
+## Session 9 Summary: Phase 2A — Trial/Data Architecture Implemented (2026-08-14)
+
+**Human-approved architecture decisions carried into this session:**
+PostgreSQL for persistent storage, Python/FastAPI for the backend/API
+(NOT started this session), Next.js + TypeScript for the frontend (NOT
+started this session), existing Python data/classification layer kept
+intact rather than rewritten, ClinicalTrials.gov remains the first
+data source. Explicitly out of scope and untouched: ML, new endpoint
+taxonomy, hematologic CRi, TTR, OR-by-modality aggregation, additional
+data sources.
+
+### What was built
+
+1. **`Trial` entity** (`src/singularity/schema.py`) — protocol-level
+   metadata, distinct from `OutcomeRecord`, linked by `nct_id`.
+2. **`extract_trial` + `ClinicalTrialsAdapter.fetch_trials`**
+   (`src/singularity/sources/clinicaltrials.py`) — maps `protocolSection`
+   onto `Trial`, same `.get()`-with-`None`-default pattern as the
+   existing outcome extraction, never fabricates a missing field.
+3. **PostgreSQL schema** (`db/migrations/0001-0003.sql`) — three
+   tables: `trials`, `outcome_records` (observed data only),
+   `endpoint_classifications` (derived, versioned classifier output).
+   Deliberately separated per the project's existing observed-vs-
+   derived principle (`architecture.md`, `Claude.md` §7) rather than
+   mixing classifier output into the same row as raw data.
+4. **`CLASSIFIER_VERSION` constant** (`src/singularity/endpoints.py`)
+   — one-line, purely additive metadata so DB-persisted classifications
+   are tied to which version of the classifier produced them. **Not a
+   rewrite**: confirmed via full test suite passing unchanged before
+   and after this addition.
+5. **`db/README.md`** — full design rationale, including the six
+   deliberate design principles (observed/derived separation,
+   versioned classifications, provenance on every table, dates as TEXT
+   not DATE, no artificial uniqueness on `outcome_records`, CHECK
+   constraint on `endpoint`).
+
+### Real verification performed, not just syntax-checked
+
+This sandbox had `apt`/`pypi` access (unlike `clinicaltrials.gov`), so
+PostgreSQL 16 was actually installed and run locally this session, and
+the schema was genuinely verified against it, not just eyeballed:
+
+- All three migrations ran cleanly against a real local instance.
+- Real `Trial`, `OutcomeRecord`, and `ClassificationResult` Python
+  objects (via the actual dataclasses, not hand-typed SQL) were
+  inserted and read back correctly — field-for-field round-trip
+  confirmed, including array columns (`phases`, `conditions`,
+  `interventions`) and the `latest_endpoint_classifications` view.
+- The `outcome_records.nct_id` foreign key was confirmed to actually
+  reject an outcome record referencing an unknown trial
+  (`ForeignKeyViolation`, not silently accepted).
+- The `endpoint_classifications` CHECK constraint was confirmed to
+  actually reject an invalid endpoint value (`CheckViolation`).
+- This manual verification was then captured as an automated,
+  reproducible test file (`tests/test_db_schema.py`, 6 tests) that
+  creates a uniquely-named scratch database per test run and drops it
+  afterward — never touches a persistent application database.
+- Confirmed the DB tests **skip cleanly (not fail)** when no
+  PostgreSQL instance is reachable (stopped the service and re-ran to
+  verify) — this matters because most environments running this test
+  suite (including this project's own sandbox in other sessions) won't
+  have a persistent database available.
+
+### Field-verification gap, disclosed honestly
+
+This session's web-fetch tooling was unavailable (unlike sessions
+4/5/6, which used it to verify ClinicalTrials.gov API behavior live).
+Only `protocolSection.identificationModule.nctId` and
+`protocolSection.outcomesModule` remain independently verified against
+a real live API response in this project. `extract_trial`'s other
+field mappings (`statusModule.overallStatus`, `designModule.phases`,
+`sponsorCollaboratorsModule.leadSponsor.name`, etc.) are implemented
+using the publicly documented, long-stable ClinicalTrials.gov API v2
+schema, but were NOT re-verified against a fresh live response this
+session. This is disclosed in three places (schema.py docstring,
+clinicaltrials.py docstring, db/README.md) rather than presented as
+equally-verified. **Recommend a live spot-check of these fields before
+Phase 2B trusts `Trial` data at scale.**
+
+### Test suite
+
+**64/64 passing** (51 pre-session-9 + 7 new Trial-extraction tests + 6
+new DB schema tests).
+
+### What remains before Phase 2B
+
+- No ingestion-to-database orchestration function exists yet (tests
+  insert directly; there's no single `ingest_trial_and_outcomes(study)`
+  pipeline call).
+- No FastAPI service, no ORM/migration-tool decision (deferred — the
+  right choice depends on the API framework, a Phase 2B decision).
+- The `protocolSection` field-verification gap above.
+- Everything explicitly out of scope this session remains out of
+  scope: ML, new endpoint taxonomy, hematologic CRi, TTR, OR-by-
+  modality aggregation, additional data sources, API, frontend.
+
+### Decisions that would need your approval before Phase 2B proceeds
+
+- ORM choice (or continued raw SQL) for the FastAPI layer.
+- Whether/how to resolve the field-verification gap (e.g., prioritize
+  a live spot-check run before building on top of untrusted fields).
+- Ingestion orchestration design (one function per study? batch job?
+  where does it run, given this sandbox still can't reach
+  `clinicaltrials.gov` directly?).
+
+None of these were decided or guessed at in this session — flagged for
+you, per instruction to stop rather than guess on genuine architecture
+decisions.
 
 ## Completed
 

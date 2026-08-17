@@ -9,6 +9,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest"]
+db = ["psycopg2-binary"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

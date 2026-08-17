@@ -280,3 +280,37 @@ Note: this maps *reported results* (`resultsSection`), not the
 *planned* outcome measures in `protocolSection.outcomesModule`
 (`primaryOutcomes`/`secondaryOutcomes`), which have no reported values
 and are out of scope for `OutcomeRecord` until a study posts results.
+
+---
+
+# Trial Entity (added Phase 2A, session 9)
+
+`singularity.schema.Trial` — protocol-level trial metadata, distinct
+from `OutcomeRecord`. Linked to its outcome records by `nct_id`.
+
+| Field | Meaning | Verified live? |
+|---|---|---|
+| `nct_id` | ClinicalTrials.gov study identifier | **Yes** |
+| `brief_title` | Short trial title | No -- documented schema, not re-verified this session |
+| `official_title` | Full formal trial title | No |
+| `overall_status` | e.g. RECRUITING, COMPLETED, TERMINATED | No |
+| `phases` | e.g. `["PHASE2", "PHASE3"]` | No |
+| `study_type` | e.g. INTERVENTIONAL, OBSERVATIONAL | No |
+| `conditions` | List of studied conditions | No |
+| `lead_sponsor` | Sponsoring organization name | No |
+| `interventions` | List of intervention names | No |
+| `start_date` | As reported by the source; NOT parsed/normalized (may be partial, e.g. `"2025-01"`) | No |
+| `completion_date` | Same caveat as `start_date` | No |
+| `enrollment_count` | Reported enrollment target/actual | No |
+
+**"Verified live" means**: independently confirmed against a real
+ClinicalTrials.gov API v2 response fetched during this project (as
+opposed to relying on general/training knowledge of the public schema).
+Only `nct_id` (via `identificationModule`) meets that bar as of
+2026-08-14. All other fields should be spot-checked against a real
+response before being trusted at scale -- see
+`docs/autonomous_state.md` "Session 9 Summary" for exactly why (the
+web-fetch tooling needed to re-verify was unavailable in that session).
+
+See `db/README.md` for how `Trial` maps onto the `trials` PostgreSQL
+table, and why dates are stored as `TEXT` rather than `DATE`.
