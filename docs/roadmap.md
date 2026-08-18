@@ -188,6 +188,56 @@ choice depends on the API framework's own conventions). The
 `protocolSection` field-verification caveat above should be resolved
 (a live spot-check) before Phase 2B trusts `Trial` data at scale.
 
+### Phase 2A-2 — Ingestion Orchestration Pipeline (2026-08-14, session 10)
+
+Closes the "no orchestration code exists yet" gap noted above.
+
+* [x] Build the orchestration layer: fetch → extract → classify →
+      persist — `singularity.pipeline.run_clinicaltrials_ingestion`.
+      Full diagram and design rationale in `docs/architecture.md`
+      "Ingestion Pipeline".
+* [x] Handles duplicates/idempotent re-runs safely — delete-then-
+      insert-per-trial strategy, verified with a real test that runs
+      the same ingestion twice and confirms row counts don't double,
+      and a second test confirming a re-run with genuinely changed
+      source data (e.g. updated trial status) is correctly reflected.
+      **Flagged for human review**: this is a design choice given the
+      schema's no-natural-key decision, not a mechanically forced one
+      — see `docs/autonomous_state.md` "Session 10 Summary".
+* [x] Does not silently discard malformed records —
+      `extract_outcome_records_verbose` (new, backward-compatible
+      addition alongside the unchanged `extract_outcome_records`)
+      reports every skipped outcome measure with a reason, surfaced in
+      `IngestionReport.skipped_outcome_details`.
+* [x] Fails loudly on network/API problems; catches and reports
+      per-study data problems without aborting the batch — verified
+      with a real test injecting a realistic malformed-JSON shape (a
+      null where a list was expected) into one study out of three, and
+      confirming the other two still ingest correctly while the
+      failure is reported by NCT ID and error type.
+* [x] Produces a clear ingestion/validation report — `IngestionReport`
+      dataclass with `to_markdown()`, mirroring the existing
+      `AuditReport`/`ValidationReport` pattern from `singularity.audit`
+      / `singularity.ingest`.
+* [x] Mock HTTP/database fixtures for deterministic tests —
+      `tests/test_pipeline.py` (7 tests): end-to-end ingestion,
+      idempotent re-run (unchanged and changed data), partial failure,
+      provenance survival, observed/derived separation. All use a
+      mocked HTTP transport against a **real** local PostgreSQL 16
+      instance (same skip-if-unreachable pattern as
+      `tests/test_db_schema.py`).
+* [x] Reproducible script for real end-to-end (real network + real DB)
+      validation — `scripts/run_clinicaltrials_ingestion.py`. Verified
+      this session that it correctly fails loudly (real `HTTPError`)
+      when run from this sandbox, rather than succeeding with fake
+      data.
+* [x] Full test suite: 71/71 passing (64 pre-existing + 7 new).
+
+**Explicitly NOT claimed**: real end-to-end ingestion (real network +
+real ClinicalTrials.gov data) has NOT been performed or verified this
+session — this sandbox still cannot reach `clinicaltrials.gov`. A
+human must run `scripts/run_clinicaltrials_ingestion.py` to get that.
+
 ### Phase 2 — remaining (not started)
 
 * [ ] Build trial search

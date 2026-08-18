@@ -148,6 +148,57 @@ development, not just checked for SQL syntax — see
 that verification. No ORM or migration-management tool has been
 chosen yet — that's a Phase 2B (API layer) decision.
 
+## Ingestion Pipeline (added Phase 2B-precursor, 2026-08-14, session 10)
+
+`singularity.pipeline.run_clinicaltrials_ingestion` ties the adapter,
+classifier, and persistence layer together end-to-end:
+
+```
+ClinicalTrialsAdapter.iter_studies()
+       v
+extract_trial() / extract_outcome_records_verbose()
+       v
+classify_outcome()
+       v
+db.upsert_trial() / db.replace_outcome_records_for_trial() / db.insert_classifications()
+       v
+PostgreSQL
+```
+
+**Idempotency design (important, read before changing):** the schema
+deliberately has no natural key on `outcome_records` (real
+ClinicalTrials.gov data contains genuine duplicate rows that must be
+preserved — see `db/README.md`). Re-running ingestion for a trial uses
+a **delete-then-insert-per-trial** strategy: existing
+`outcome_records` for that `nct_id` are deleted and replaced, with old
+`endpoint_classifications` cascading away automatically. This makes
+re-runs idempotent (same input → same final state) at the cost of not
+preserving row-level classification history across re-ingestion runs.
+This is a defensible ETL pattern given the schema's own constraints,
+but it's a design choice, not a mechanically forced one — see
+`docs/autonomous_state.md` "Session 10 Summary" for the full reasoning
+and an explicit flag for human review.
+
+**Failure handling:** network/HTTP failures while fetching propagate
+immediately and abort the run (fail loudly, no fallback). Per-study
+data problems (malformed JSON, a DB constraint violation for one
+trial) are caught, rolled back for that trial only, and reported in
+the returned `IngestionReport` — the rest of the batch still ingests.
+Verified with a real test injecting a realistic malformed-JSON shape
+(a null where a list was expected) into one study out of three, and
+confirming the other two still ingest correctly.
+
+**What was verified vs. what requires a human to run:** all pipeline
+tests (`tests/test_pipeline.py`) use a mocked HTTP transport against a
+**real** local PostgreSQL 16 instance — the database-write path,
+idempotency, partial-failure handling, provenance survival, and
+observed/derived separation are all genuinely verified. **Real network
+access to clinicaltrials.gov was never available in this sandbox** —
+`scripts/run_clinicaltrials_ingestion.py` is the reproducible script
+for a human to run true end-to-end (real network + real database)
+ingestion and report back, following the same pattern as
+`scripts/validate_real_clinicaltrials_data.py` from session 5.
+
 ---
 
 # Endpoint Layer

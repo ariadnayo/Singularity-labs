@@ -2,7 +2,7 @@
 
 ## Last Updated
 
-2026-08-14 (session 9)
+2026-08-14 (session 10)
 
 ## Current Phase
 
@@ -535,6 +535,107 @@ new DB schema tests).
 None of these were decided or guessed at in this session — flagged for
 you, per instruction to stop rather than guess on genuine architecture
 decisions.
+
+## Session 10 Summary: Ingestion Orchestration Pipeline Implemented and Verified (2026-08-14)
+
+**Scope: the full fetch → normalize → classify → PostgreSQL pipeline,
+per explicit instruction.** ML, new endpoint taxonomy, hematologic
+CRi, TTR, OR-by-modality aggregation, additional data sources, and
+frontend/UI remain completely untouched, per instruction.
+
+### What was built
+
+1. **`extract_outcome_records_verbose`** (`sources/clinicaltrials.py`)
+   — backward-compatible addition alongside the unchanged
+   `extract_outcome_records` (both now call a shared internal
+   implementation; confirmed zero behavior change via full suite
+   passing before and after the refactor). Reports every skipped
+   outcome measure (currently: missing title) with a reason, instead
+   of silently dropping it with no trace.
+2. **`ClinicalTrialsAdapter.iter_studies`** — small additive method so
+   the pipeline can fetch raw studies once and extract both `Trial`
+   and `OutcomeRecord` data from the same fetch, instead of the
+   pipeline calling `fetch_trials()` and `fetch_outcome_records()`
+   separately and paging through the API twice for no reason.
+3. **`singularity.db`** — low-level PostgreSQL write helpers
+   (`upsert_trial`, `replace_outcome_records_for_trial`,
+   `insert_classifications`, `get_connection`). Raw SQL via psycopg2,
+   no ORM (none has been chosen — Phase 2B decision).
+4. **`singularity.pipeline`** — `run_clinicaltrials_ingestion(conn,
+   adapter, ...)` orchestrates the full pipeline and returns an
+   `IngestionReport` (mirrors the existing `AuditReport`/
+   `ValidationReport` pattern).
+5. **`scripts/run_clinicaltrials_ingestion.py`** — reproducible script
+   for a human to run real end-to-end (real network + real database)
+   ingestion, following the exact pattern established in session 5's
+   `scripts/validate_real_clinicaltrials_data.py`.
+
+### Design decision flagged for your review (not unilaterally settled)
+
+The existing schema (session 9) deliberately has no natural-key
+uniqueness on `outcome_records`, to preserve genuine duplicate rows in
+real ClinicalTrials.gov data. That means idempotent re-ingestion for a
+trial can't use a simple "insert if not present" check — there's no
+reliable way to distinguish "this is the same row as last time" from
+"this is a second, genuinely distinct duplicate." I resolved this with
+a **delete-then-insert-per-trial** strategy: each ingestion run
+replaces a trial's `outcome_records` wholesale (old
+`endpoint_classifications` cascade-delete automatically via the
+existing FK). This makes re-runs idempotent in the sense that matters
+(same input → same final state) and correctly reflects genuinely
+changed source data on re-run (verified by a test that changes a
+trial's status between two ingestion runs and confirms the DB reflects
+the new value). **The cost**: row-level classification history is not
+preserved across re-ingestion runs of the same trial — a re-run with
+identical source data produces new `outcome_records.id` values and
+therefore a fresh classification row, not literally the same row
+re-classified. This is a standard, defensible ETL pattern given the
+schema's own constraints, but it IS a design choice. If you intended
+append-only/content-hash-based row stability instead, this should be
+revisited before Phase 2B builds further on top of it.
+
+### Real verification performed, and its exact boundary
+
+**Real PostgreSQL, mocked network** (same pattern as session 9):
+`tests/test_pipeline.py`'s 7 tests all run against a real, disposable
+local PostgreSQL 16 instance (uniquely-named scratch database per
+test, dropped after), with a mocked HTTP transport. This genuinely
+verifies: end-to-end DB writes, idempotent re-run (both unchanged and
+changed source data), partial-failure handling (a real test injects a
+realistic malformed-JSON shape — `"classes": null` where a list was
+expected — into the middle of a 3-study batch and confirms the other 2
+studies still ingest correctly while the failure is reported by NCT ID
+and exception type), provenance survival through the full pipeline,
+and the structural separation of observed data (`outcome_records`, no
+classifier columns) from derived data (`endpoint_classifications`).
+
+**Real network was NOT available and NOT used.** This sandbox still
+cannot reach `clinicaltrials.gov` — confirmed again this session by
+actually running `scripts/run_clinicaltrials_ingestion.py` here: it
+correctly connected to a real local database, then correctly failed
+loudly with a real `HTTPError: 403 Forbidden` when it tried to reach
+the live API, rather than silently succeeding with fabricated data.
+**No claim of real end-to-end ingestion is made.** That requires a
+human running the script above from an environment with real network
+access.
+
+### Test suite
+
+**71/71 passing** (64 pre-session-10 + 7 new `test_pipeline.py` tests).
+
+### What remains before Phase 2B (API layer)
+
+- Real end-to-end ingestion (real network + real DB) has not been run
+  by anyone yet — the script is ready, waiting on you.
+- The `protocolSection` field-verification gap from session 9 (only
+  `nct_id` independently verified live) is unchanged.
+- No ORM/migration-tool decision made.
+- The idempotency design choice above should be explicitly confirmed
+  or revised before more is built on top of it.
+- Everything explicitly out of scope this session remains out of
+  scope: ML, new endpoint taxonomy, hematologic CRi, TTR, OR-by-
+  modality aggregation, additional data sources, frontend/UI, and the
+  FastAPI service itself.
 
 ## Completed
 

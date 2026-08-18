@@ -205,13 +205,39 @@ def extract_outcome_records(study: dict) -> list[OutcomeRecord]:
     Every returned record carries `provenance.raw` set to the raw
     outcome-measure dict it came from, so the mapping can be audited
     or re-derived.
+
+    This function's return type (list[OutcomeRecord], no skip
+    information) is unchanged since it was first written -- existing
+    callers/tests are unaffected. For a variant that also reports which
+    outcome measures were skipped and why (needed by the Phase 2B
+    ingestion pipeline's "do not silently discard malformed records"
+    requirement), see `extract_outcome_records_verbose`, added
+    2026-08-14 (session 10). Both call the same internal
+    implementation, so behavior is guaranteed identical -- verified by
+    the full test suite passing unchanged after this refactor.
     """
+    records, _skipped = _extract_outcome_records_impl(study)
+    return records
+
+
+def extract_outcome_records_verbose(study: dict) -> "tuple[list[OutcomeRecord], list[dict]]":
+    """Same mapping as `extract_outcome_records`, but also returns a
+    list of skip records (each a dict with `nct_id`, `reason`, and the
+    raw outcome-measure dict that was skipped) for outcome measures
+    that could not become a valid OutcomeRecord (currently: missing
+    title). Added for the ingestion pipeline's reporting requirement --
+    see `singularity.pipeline`.
+    """
+    return _extract_outcome_records_impl(study)
+
+
+def _extract_outcome_records_impl(study: dict) -> "tuple[list[OutcomeRecord], list[dict]]":
     protocol = study.get("protocolSection", {})
     nct_id = protocol.get("identificationModule", {}).get("nctId")
     if not nct_id:
         # A study record without an NCT ID is not usable -- do not
         # guess one.
-        return []
+        return [], []
 
     provenance_meta = study.get("_page_provenance", {})
     results = study.get("resultsSection", {})
@@ -219,11 +245,13 @@ def extract_outcome_records(study: dict) -> list[OutcomeRecord]:
     outcome_measures = outcome_module.get("outcomeMeasures", [])
 
     records: list[OutcomeRecord] = []
+    skipped: list[dict] = []
     for om in outcome_measures:
         title = om.get("title")
         if not title:
             # Cannot build a valid OutcomeRecord without a title; skip
-            # and do not fabricate one.
+            # and do not fabricate one. Reported, not silently dropped.
+            skipped.append({"nct_id": nct_id, "reason": "missing title", "raw_outcome_measure": om})
             continue
         parameter = om.get("paramType")
         unit = om.get("unitOfMeasure")
@@ -259,7 +287,8 @@ def extract_outcome_records(study: dict) -> list[OutcomeRecord]:
                             provenance=provenance,
                         )
                     )
-    return records
+    return records, skipped
+
 
 
 def extract_trial(study: dict) -> Optional[Trial]:
@@ -354,6 +383,39 @@ class ClinicalTrialsAdapter:
     def __init__(self, http_get: HttpGet = _default_http_get, sleep: Callable[[float], None] = time.sleep):
         self._http_get = http_get
         self._sleep = sleep
+
+    def iter_studies(
+        self,
+        *,
+        query_cond: Optional[str] = None,
+        query_term: Optional[str] = None,
+        filter_overall_status: Optional[list[str]] = None,
+        filter_ids: Optional[list[str]] = None,
+        filter_advanced: Optional[str] = None,
+        page_size: int = 50,
+        max_pages: Optional[int] = None,
+    ) -> Iterable[dict]:
+        """Yield raw study dicts (with `_page_provenance` attached),
+        using this adapter's configured transport/rate-limit settings.
+
+        Added for `singularity.pipeline`, which needs both `Trial` and
+        `OutcomeRecord` data from the SAME fetch -- calling
+        `fetch_trials()` and `fetch_outcome_records()` separately would
+        page through the API twice for no reason. Both of those methods
+        remain available independently for callers who only want one or
+        the other.
+        """
+        yield from iter_all_studies(
+            query_cond=query_cond,
+            query_term=query_term,
+            filter_overall_status=filter_overall_status,
+            filter_ids=filter_ids,
+            filter_advanced=filter_advanced,
+            page_size=page_size,
+            max_pages=max_pages,
+            http_get=self._http_get,
+            sleep=self._sleep,
+        )
 
     def fetch_outcome_records(
         self,
