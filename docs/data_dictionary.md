@@ -281,6 +281,30 @@ Note: this maps *reported results* (`resultsSection`), not the
 (`primaryOutcomes`/`secondaryOutcomes`), which have no reported values
 and are out of scope for `OutcomeRecord` until a study posts results.
 
+## Known limitation: `value` is not always a rate (added session 11/12, 2026-08-14)
+
+`outcomeMeasures[].denoms` (the group-size denominator, e.g. "66
+participants") is present in the raw ClinicalTrials.gov response but
+is **not currently captured** by `OutcomeRecord` or the `outcome_records`
+table. Confirmed via real-data validation: a real ORR-classified row
+(`NCT02360579`) had `parameter=COUNT_OF_PARTICIPANTS` and `value=23` —
+this is a raw **responder count**, not a percentage, and the group's
+actual size (66) is only in the discarded `denoms` field.
+
+**Consequence: a downstream consumer must not assume `outcome_records.value`
+is always already a rate/percentage for ORR (or any) classified rows.**
+Rows with `unit` like `"percentage of participants"` genuinely are
+rates; rows with `parameter=COUNT_OF_PARTICIPANTS` (or similar
+count-typed parameters) are raw counts and require the denominator to
+become a rate.
+
+This is explicitly **not fixed** — capturing `denoms` would require a
+schema change (new field(s) on `OutcomeRecord` and the `outcome_records`
+table) and is deferred as a Phase 2/data-model enhancement, not
+resolved in session 11 or 12. Classification (e.g. `endpoint=ORR`) is
+unaffected and correct regardless of this gap — the gap is about the
+raw *value*, not the *endpoint* it's classified as.
+
 ---
 
 # Trial Entity (added Phase 2A, session 9)

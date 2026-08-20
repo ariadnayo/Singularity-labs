@@ -396,6 +396,141 @@ def test_bare_pcr_abbreviation_not_matched_to_avoid_molecular_assay_confusion():
     assert "pathological" not in result.reason.lower()
 
 
+def test_maximum_of_ceiling_phrase_not_mistaken_for_fixed_timepoint():
+    """Real bug found via session-11 real-data validation (NCT02360579,
+    3 rows): a plain median PFS title with timeframe '...for a maximum
+    of 60 months' was misclassified as a fixed-timepoint PFS6 subtype.
+    The exact real title/timeframe pair below is copied from that
+    trial (values 2.6/3.9/4.1 months confirm this is real median PFS,
+    not a rate)."""
+    r = _mock_record(
+        title="Disease Assessment for Progression-Free Survival",
+        parameter="MEDIAN",
+        unit="months",
+        timeframe="Every 6 weeks for 6 months, then every 3 months for a maximum of 60 months",
+    )
+    result = classify_outcome(r)
+    assert result.endpoint == "PFS"
+    assert result.subtype == "median_or_time_to_event"
+    assert result.confident is True
+
+
+def test_maximum_of_guard_does_not_suppress_genuine_title_level_fixed_timepoint():
+    """Conservatism guard: the new 'maximum of' ceiling phrase must not
+    suppress a GENUINE fixed-timepoint measure when the timepoint is
+    stated in the title itself (checked before the timeframe fallback,
+    so this must be unaffected by the timeframe-level ceiling guard)."""
+    r = _mock_record(
+        title="Progression-Free Survival at 6 Months",
+        parameter="NUMBER",
+        unit="Probability",
+        timeframe="Every 6 weeks for a maximum of 60 months",
+    )
+    result = classify_outcome(r)
+    assert result.endpoint == "PFS"
+    assert result.subtype == "PFS6"
+    assert result.confident is False
+
+
+def test_real_os_row_with_up_to_phrasing_still_correct_after_maximum_of_change():
+    """Regression guard: the sibling real OS row from the same trial
+    (NCT02360579) used 'up to' phrasing and was already classified
+    correctly before this session's fix -- confirms the 'maximum of'
+    addition didn't disturb the existing 'up to' guard."""
+    r = _mock_record(
+        title="Overall Survival",
+        parameter="MEDIAN",
+        unit="months",
+        timeframe="Until death or up to 60 months",
+    )
+    result = classify_outcome(r)
+    assert result.endpoint == "OS"
+    assert result.subtype == "median_or_time_to_event"
+    assert result.confident is True
+
+
+def test_ae_plural_and_teae_receive_specific_exclusion_reason():
+    """Real bug found via session-11 validation (NCT01324323): the
+    original AE pattern was singular-only and missed every real
+    occurrence (all plural/TEAE). Uses the exact real title."""
+    r = _mock_record(
+        title="Summary of Participants With Treatment Emergent Adverse Events (TEAEs)",
+        parameter="COUNT_OF_PARTICIPANTS",
+        unit="Participants",
+    )
+    result = classify_outcome(r)
+    assert result.endpoint is None
+    assert "pharmacokinetic" not in result.reason.lower()
+    assert "TEAE" in result.reason or "AE" in result.reason or "adverse" in result.reason.lower() \
+        or "related-but-distinct" in result.reason.lower()
+
+
+def test_bare_teae_abbreviation_alone_is_excluded():
+    r = _mock_record(title="Number of TEAEs by Severity Grade", parameter="COUNT_OF_PARTICIPANTS", unit="Participants")
+    result = classify_outcome(r)
+    assert result.endpoint is None
+
+
+def test_pk_measures_from_real_dataset_are_excluded_with_specific_reason():
+    """Real titles from NCT01324323 (a Phase 1 PK study), verified via
+    session-11 validation. All should be excluded via the new
+    non-efficacy reason, not the generic unclassified catch-all."""
+    real_pk_titles = [
+        ("Area Under the Plasma Concentration Time-curve From Time 0 to the Time of the Last Quantifiable Concentration (AUC0-t)of Romidepsin", "GEOMETRIC_MEAN", "ng*hr/mL"),
+        ("Area Under the Plasma Concentration Time-curve From Time 0 to 24-hour (AUC0-24) for Romidepsin", "GEOMETRIC_MEAN", "ng*hr/mL"),
+        ("Area Under the Plasma Concentration Time-curve From Time Zero Extrapolated to Infinity (AUC0-∞).", "GEOMETRIC_MEAN", "ng*hr/mL"),
+        ("Maximum Observed Plasma Concentration (Cmax)of Romidepsin", "GEOMETRIC_MEAN", "ng/mL"),
+        ("Time to Maximum Observed Plasma Concentration (Tmax)", "MEDIAN", "hours"),
+        ("Estimate of the Terminal Elimination Half-life in Plasma (t1/2)", "GEOMETRIC_MEAN", "hours"),
+        ("Clearance (CL): Apparent Total Plasma Clearance.", "GEOMETRIC_MEAN", "L/hr"),
+        ("Apparent Total Volume of Distribution (Vz).", "GEOMETRIC_MEAN", "L"),
+    ]
+    for title, parameter, unit in real_pk_titles:
+        r = _mock_record(title=title, parameter=parameter, unit=unit)
+        result = classify_outcome(r)
+        assert result.endpoint is None, title
+        assert "pharmacokinetic" in result.reason.lower(), title
+
+
+def test_safety_measures_from_real_dataset_are_excluded_with_specific_reason():
+    """Real titles from NCT02044380 and NCT02360579, including the
+    source's own real typo ('Assesment', verified in provenance_raw)."""
+    for title in ["Safety Assesment", "Safety Profile"]:
+        r = _mock_record(title=title, parameter="COUNT_OF_PARTICIPANTS", unit="Participants")
+        result = classify_outcome(r)
+        assert result.endpoint is None, title
+        assert "safety" in result.reason.lower() or "pharmacokinetic" in result.reason.lower(), title
+
+
+def test_bare_safety_word_does_not_suppress_a_combined_efficacy_title():
+    """Conservatism guard, per explicit instruction: a title that
+    happens to mention 'safety' alongside a genuine efficacy endpoint
+    must NOT be excluded -- only the specific whole phrases 'safety
+    assessment'/'safety profile' are matched, not a bare 'safety'."""
+    r = _mock_record(
+        title="Safety and Efficacy: Progression-Free Survival",
+        parameter="MEDIAN",
+        unit="months",
+    )
+    result = classify_outcome(r)
+    assert result.endpoint == "PFS"
+    assert result.confident is True
+
+
+def test_pk_patterns_do_not_falsely_exclude_a_canonical_endpoint():
+    """Conservatism guard: none of the new PK patterns should ever fire
+    on a genuine PFS/OS/ORR/DOR/DFS title -- confirmed with plain
+    canonical titles containing no PK terminology."""
+    for title, expected_endpoint in [
+        ("Overall Survival (OS)", "OS"),
+        ("Objective Response Rate (ORR)", "ORR"),
+        ("Duration of Response (DOR)", "DOR"),
+    ]:
+        r = _mock_record(title=title, parameter="MEDIAN", unit="months")
+        result = classify_outcome(r)
+        assert result.endpoint == expected_endpoint, title
+
+
 def test_summarize_counts_are_consistent():
     records = [
         _mock_record(title="Median Overall Survival", parameter="MEDIAN", unit="months"),

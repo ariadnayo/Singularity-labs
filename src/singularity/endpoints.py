@@ -50,7 +50,18 @@ _NON_CANONICAL_PATTERNS = [
     r"\bttp\b",
     r"\bquality of life\b",
     r"\bqol\b",
-    r"\badverse event\b",
+    r"\badverse events?\b",
+    r"\bteaes?\b",
+    # Session 11 fix (2026-08-14, see docs/autonomous_state.md): the
+    # original pattern was singular-only (`adverse event`, no `s?`).
+    # In a real 109-row validation sample, every actual occurrence of
+    # AE language used the plural ("Adverse Events", "TEAEs") -- a 0%
+    # real-world hit rate for the old pattern. Classification outcome
+    # was unaffected (fell through to the generic unclassified catch-
+    # all either way), but the exclusion reason wasn't the intended,
+    # documented one. `teaes?` is a standalone abbreviation pattern for
+    # titles that use only "TEAE"/"TEAEs" without spelling out "adverse
+    # events" nearby.
     # Added 2026-08-14 (session 8), per human-approved taxonomy analysis
     # (docs/endpoint_taxonomy_analysis.md). These were already correctly
     # left unclassified before this change -- no pattern matched them --
@@ -75,6 +86,47 @@ _NON_CANONICAL_PATTERNS = [
     # (CR/PR/SD/PD/NE), not itself a numeric response rate. Deliberately
     # not matching a bare "bor" for the same false-positive-labeling
     # reason as bare "pcr" above.
+]
+
+# Non-efficacy measures: pharmacokinetic (PK) and generic safety
+# assessments. Kept in a SEPARATE list from _NON_CANONICAL_PATTERNS
+# above, deliberately: DCR/CBR/TTP/QoL/AE/EFS/pCR/BOR are measures that
+# could plausibly be confused with a canonical efficacy endpoint (that
+# is precisely why they need an explicit exclusion). PK and safety
+# measures were never at risk of that confusion -- a PK or safety
+# title never superficially resembles "objective response rate" or
+# "progression-free survival". This is a categorically different kind
+# of exclusion (out-of-scope-by-definition vs. related-but-distinct),
+# so it gets its own list and its own, more accurate reason string
+# rather than diluting the meaning of the list above.
+#
+# Added 2026-08-14 (session 11), grounded in the real 109-row
+# validation dataset (docs/autonomous_state.md "Session 11 Summary")
+# -- every pattern below is copied from an actual real title, not
+# speculative. Deliberately does NOT include a bare `\bsafety\b`
+# pattern: a genuine combined title (e.g. "Safety and Efficacy:
+# Progression-Free Survival") could contain that word without being a
+# safety-only measure, and the two real safety titles found both
+# matched a specific, unambiguous whole phrase anyway.
+_NON_EFFICACY_PATTERNS = [
+    # Pharmacokinetic (PK) measures -- from a real Phase 1 PK study
+    # (NCT01324323): AUC/Cmax/Tmax measures all contain "plasma
+    # concentration"; half-life, clearance, and volume of distribution
+    # are each unambiguous, PK-exclusive terms.
+    r"\bplasma concentration\b",
+    r"\bhalf-life\b",
+    r"\bplasma clearance\b",
+    r"\bvolume of distribution\b",
+    r"\bauc\b",
+    r"\bcmax\b",
+    r"\btmax\b",
+    # Generic safety assessment titles -- from two real trials
+    # (NCT02044380, NCT02360579). "safety assess?ment" matches both the
+    # correct spelling and the real source's typo ("Safety Assesment",
+    # verified in provenance_raw, not a transcription error on our
+    # side) via the optional second "s".
+    r"\bsafety assess?ment\b",
+    r"\bsafety profile\b",
 ]
 
 _FIXED_TIMEPOINT_MONTH_RE = re.compile(r"(?<![\d.])(\d{1,3})[\s-]?month", re.IGNORECASE)
@@ -122,6 +174,17 @@ def _fixed_timepoint_suffix(record: OutcomeRecord) -> "str | None":
     ..."). This guard applies equally to the year-based pattern added
     2026-08-14, to avoid reintroducing the same bug in years instead
     of months.
+
+    SECOND VARIANT FOUND (2026-08-14, session 11, see
+    docs/autonomous_state.md): a real trial (NCT02360579) used the
+    phrase "...for a maximum of 60 months" for the identical ceiling
+    concept -- not caught by the original "up to"/"approximately"
+    guard, causing 3 real median-PFS values to be wrongly downgraded
+    to a low-confidence PFS6 subtype. Fixed by adding "maximum of" to
+    the guard. Note "for up to ..." and "for a period of up to ..."
+    (other phrasings considered) already contain the literal substring
+    "up to" and were already covered by the existing guard -- no
+    separate pattern was needed for those.
     """
     m = _FIXED_TIMEPOINT_MONTH_RE.search(record.title)
     if m:
@@ -131,7 +194,7 @@ def _fixed_timepoint_suffix(record: OutcomeRecord) -> "str | None":
         return f"{y.group(1)}yr"
 
     timeframe = record.timeframe or ""
-    if re.search(r"\bup to\b|\bapproximately\b", timeframe, re.IGNORECASE):
+    if re.search(r"\bup to\b|\bapproximately\b|\bmaximum of\b", timeframe, re.IGNORECASE):
         return None
     m = _FIXED_TIMEPOINT_MONTH_RE.search(timeframe)
     if m:
@@ -164,6 +227,23 @@ def classify_outcome(record: OutcomeRecord) -> ClassificationResult:
                 "(e.g. DCR, CBR, TTP, QoL, AE, EFS, pCR, BOR) that must "
                 "not be folded into a canonical endpoint per "
                 "data_dictionary.md."
+            ),
+        )
+
+    # 1b. Non-efficacy measures (PK, generic safety) -> never classify.
+    # Separate from the check above: these were never at risk of being
+    # confused with a canonical efficacy endpoint, they're simply
+    # outside the PFS/OS/ORR/DOR/DFS taxonomy by definition. See
+    # _NON_EFFICACY_PATTERNS above for why this is a distinct list.
+    if _matches_any(_NON_EFFICACY_PATTERNS, title):
+        return ClassificationResult(
+            endpoint=None,
+            subtype=None,
+            confident=False,
+            reason=(
+                "Title matches a pharmacokinetic or generic safety "
+                "measure, which is outside the PFS/OS/ORR/DOR/DFS "
+                "efficacy-endpoint taxonomy by definition."
             ),
         )
 

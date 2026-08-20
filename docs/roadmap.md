@@ -238,6 +238,38 @@ real ClinicalTrials.gov data) has NOT been performed or verified this
 session — this sandbox still cannot reach `clinicaltrials.gov`. A
 human must run `scripts/run_clinicaltrials_ingestion.py` to get that.
 
+### Phase 2A-3 — Real-Data Validation and Approved Fixes (2026-08-14, sessions 11-12)
+
+First genuinely real end-to-end validation: a human ran
+`scripts/run_clinicaltrials_ingestion.py` from Colab (real network) →
+10 real trials / 109 real outcome records / 109 classifications, 0
+failures, 0 malformed records, written to a real PostgreSQL database.
+
+* [x] Analyzed all 13 classified rows + representative samples across
+      8 unclassified title families (96 rows) against real provenance
+      — session 11, no code changed. Found: 1 real classifier bug
+      (ceiling-guard phrase gap), 1 cosmetic bug (AE plural pattern), 1
+      extraction/schema gap (ORR count vs. rate, no denominator
+      captured), 1 positive-confirmation finding (NA/censored value
+      handling working correctly), 0 false negatives.
+* [x] Implemented 3 of 4 proposed fixes, human-approved — session 12:
+      ceiling-guard extended ("maximum of"), AE pattern fixed
+      (plural + TEAE), new `_NON_EFFICACY_PATTERNS` for PK/safety (9
+      patterns, all grounded in real titles). 9 new regression tests.
+      Full suite: 80/80.
+* [x] Re-validated against the exact real 109-row dataset with a
+      complete field-level diff: 0 unexpected endpoint changes, the 3
+      predicted `NCT02360579` PFS rows corrected exactly as intended,
+      96 reason-text improvements fully accounted for (no row outside
+      the grounded AE/PK/safety/PFS-ceiling categories touched).
+* [ ] Fix #3 (denominator capture) explicitly deferred per instruction
+      — documented as a known limitation in `docs/data_dictionary.md`,
+      not implemented. Tracked as a future Phase 2/data-model item.
+* [ ] **Classifier still explicitly NOT validated or production-ready.**
+      Real-data validation is incremental, not a one-time gate — every
+      future change should be re-validated against real data the same
+      way.
+
 ### Phase 2 — remaining (not started)
 
 * [ ] Build trial search

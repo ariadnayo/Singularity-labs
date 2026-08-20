@@ -2,7 +2,7 @@
 
 ## Last Updated
 
-2026-08-14 (session 10)
+2026-08-14 (session 12)
 
 ## Current Phase
 
@@ -636,6 +636,183 @@ access.
   scope: ML, new endpoint taxonomy, hematologic CRi, TTR, OR-by-
   modality aggregation, additional data sources, frontend/UI, and the
   FastAPI service itself.
+
+## Session 11 Summary: Real Ingested-Data Validation — Bugs Found, NOT Yet Fixed (2026-08-14)
+
+**First genuinely real end-to-end validation of this project**: a
+human ran `scripts/run_clinicaltrials_ingestion.py` from Google Colab
+(real network access) against a real PostgreSQL database. Result: 10
+real ClinicalTrials.gov studies fetched, 10 trials / 109 outcome
+records / 109 classifications written, 0 failures, 0 malformed
+records. Data exported via a join across `trials` /
+`outcome_records` / `latest_endpoint_classifications` and analyzed
+directly — no synthetic data, no reliance on memory.
+
+**This is analysis only. No classifier code has been changed.**
+
+### What was reviewed
+
+All 13 confidently-or-low-confidence-classified rows (100% of
+classified output), plus representative samples spanning every one of
+8 distinct unclassified title families (96 rows) — well past the
+≥20-row requirement, every finding backed by the actual
+`provenance_raw` JSON for that row, not assumption.
+
+### Findings
+
+1. **Confirmed bug (Category A, high severity):** the fixed-timepoint
+   "ceiling guard" (added session 6 to prevent follow-up-window text
+   from being mistaken for a fixed assessment timepoint) only
+   recognizes the phrases "up to" and "approximately". Real data
+   (`NCT02360579`, outcome_record_ids 153–155) uses **"for a maximum
+   of"** for the identical concept — this trial's `OS` timeframe
+   ("until death or **up to** 60 months") was correctly guarded, but
+   its `PFS` timeframe ("...for a **maximum of** 60 months") was not,
+   causing 3 real median-PFS values (2.6/3.9/4.1 months) to be wrongly
+   downgraded to low-confidence `PFS6`. This is a new variant of the
+   exact bug class fixed in sessions 4 and 6 — same mechanism,
+   different unguarded phrase. `ORR`/`DOR` in the same trial share the
+   identical timeframe but weren't affected, only because those
+   branches don't consult the fixed-timepoint detector at all — not
+   because of any actual protection.
+2. **Confirmed bug (Category A, cosmetic only):** `_NON_CANONICAL_PATTERNS`'s
+   AE pattern (`\badverse event\b`) is singular-only. In this real
+   109-row sample, **every actual occurrence of adverse-event language
+   used the plural** ("Adverse Events", "TEAEs") — a 0% real-world hit
+   rate for the existing pattern. Final classification is unaffected
+   (falls through to the same "unclassified" outcome via the generic
+   catch-all either way), but the session-8 goal of explicit, audited
+   exclusion reasons is silently failing for the most common real
+   phrasing.
+3. **Extraction/schema gap (Category E, not a classifier bug):** ORR
+   rows with `parameter=COUNT_OF_PARTICIPANTS` (`NCT02360579`,
+   outcome_record_ids 143–146) store a raw responder **count** (e.g.
+   23) as `value`, with no capture anywhere of the source's `denoms`
+   field (the group-size denominator, e.g. 66) needed to compute an
+   actual rate. Classification (`ORR`) is conceptually correct; the
+   stored `value` is not itself a percentage for this measurement
+   type. A downstream consumer must not assume `value` is always
+   already a rate.
+4. **Confirmed correct, positive finding:** DOR rows with `value=NaN`
+   (`NCT02360579`, ids 147, 149) were checked against raw provenance:
+   the source literally reports `"NA"` with an explanatory comment
+   ("insufficient events, median not reached") — a genuine censored
+   result, not malformed data. `_parse_measurement_value`'s
+   None-not-guessed design handled this correctly.
+5. **Observation, not a bug:** 8 PK-related titles and 2
+   generic-"safety" titles (72 rows total) are correctly unclassified,
+   but only by accident of matching no canonical pattern — unlike
+   DCR/CBR/TTP/QoL/AE/EFS/pCR/BOR, there's no dedicated, documented
+   exclusion pattern for PK or generic safety language.
+6. **No false negatives found**: no case where a genuine PFS/OS/ORR/
+   DOR/DFS measure was wrongly left fully unclassified in this sample
+   — positive evidence for the existing exclusion logic.
+7. **Open question, not resolved:** `NCT02044380` has only 4 outcome
+   records, all "Safety Assesment" — unusual for its trial type. Could
+   not confirm from the available per-row provenance (scoped to
+   individual measures, not the full study JSON) whether this is
+   genuinely all that trial has posted or a possible gap. Not asserted
+   either way.
+
+### Proposed fixes (awaiting approval, NOT implemented)
+
+1. Extend the ceiling-guard regex to also catch "for a maximum of"
+   (Finding 1) — regression test using the real title/timeframe above.
+2. Add plural variants to the AE pattern (Finding 2) — regression test
+   using the real title above.
+3. Finding 3 requires a human decision: capture `denoms` into the
+   schema now (bigger, schema-affecting change) vs. defer and document
+   the limitation. No recommendation implemented either way yet.
+4. Finding 5 (named PK/safety exclusions): optional, low priority,
+   cosmetic-only — deferred pending human interest.
+
+### Explicit non-claim
+
+**Production readiness is NOT claimed.** This session confirms the
+pipeline works end-to-end on real data (10 real studies → 109 real,
+correctly-provenanced records → classified → persisted, 0 crashes),
+and surfaces two new real classifier bugs plus one real extraction gap
+that would not have been found without this real-data pass — exactly
+the point of doing it. The classifier remains explicitly unvalidated
+for production use until Findings 1–3 are resolved and re-validated
+the same way sessions 4/6/8 did.
+
+## Session 12 Summary: Approved Fixes #1/#2/#4 Implemented and Re-Validated Against Real Data (2026-08-14)
+
+**Scope: exactly the 3 approved fixes from session 11's validation
+report, nothing else.** Fix #3 (denominator capture) explicitly
+deferred per instruction — documented below, no schema change made.
+No UI, ML, additional data sources, or new taxonomy expansion.
+
+### What changed
+
+1. **Ceiling-guard extended** (`_fixed_timepoint_suffix`): added
+   `"maximum of"` to the follow-up-ceiling phrase list (alongside the
+   existing `"up to"`/`"approximately"`). Note: `"for up to ..."` and
+   `"for a period of up to ..."` (other phrasings considered) already
+   contain the substring `"up to"` and were already covered — no
+   separate pattern needed for those.
+2. **AE pattern fixed** (`_NON_CANONICAL_PATTERNS`): `\badverse event\b`
+   (singular-only) → `\badverse events?\b` + new `\bteaes?\b`.
+3. **New `_NON_EFFICACY_PATTERNS` list** (PK + generic safety),
+   deliberately kept separate from `_NON_CANONICAL_PATTERNS` with its
+   own reason string — PK/safety titles were never at risk of being
+   confused with a canonical endpoint the way DCR/CBR are, so
+   conflating them would blur the existing list's meaning. 9 patterns,
+   every one copied from an actual real title in the validation
+   dataset (`plasma concentration`, `half-life`, `plasma clearance`,
+   `volume of distribution`, `auc`, `cmax`, `tmax`, `safety
+   assess?ment` [matches the source's own real typo, "Assesment"],
+   `safety profile`). Deliberately no bare `\bsafety\b` pattern, per
+   explicit instruction.
+
+**9 new regression tests** (2 for the ceiling fix incl. a title-level
+non-suppression guard, 2 for AE, 5 for PK/safety incl. a
+bare-"safety"-doesn't-suppress-efficacy guard and a
+PK-patterns-never-fire-on-canonical-titles guard). **Full suite:
+80/80 passing** (71 baseline + 9 new).
+
+### Re-validation against the exact real 109-row dataset — full row-level diff
+
+Re-ran the classifier against every one of the 109 real rows from the
+Colab-exported dataset (`nct_id`, `title`, `timeframe`, etc. — the
+exact CSV analyzed in session 11) and diffed every field:
+
+- **Endpoint value: 0 rows changed, for any row, anywhere.** No
+  canonical classification changed unexpectedly — confirmed by direct
+  comparison, not assumption.
+- **3 rows changed subtype/confidence** — exactly the predicted
+  `NCT02360579` PFS rows (outcome_record_ids 153/154/155):
+  `PFS6/confident=False` → `median_or_time_to_event/confident=True`.
+  This was the intended effect of Fix #1, confirmed exactly.
+- **96 rows changed `reason` text only** (endpoint/subtype/confident
+  unchanged) — fully accounted for: the 3 PFS rows above (reason text
+  changed alongside their subtype fix) + 16 PK rows (8 real titles) +
+  64 safety rows (2 real titles, "Safety Assesment" ×4 and "Safety
+  Profile" ×60) + 13 AE/TEAE rows (1 real title) = 96 exactly. No row
+  outside these grounded, intended categories was touched.
+- **No false positives**: every reason-text change maps to a specific,
+  real, previously-identified title; nothing unexpected shifted.
+
+### Fix #3 (denominators) — explicitly deferred, documented not implemented
+
+Per instruction, no schema change was made. **Documented limitation**:
+`OutcomeRecord`/`outcome_records` rows with `parameter=COUNT_OF_PARTICIPANTS`
+may store a raw responder *count* rather than a rate — the source's
+`denoms` field (group-size denominator) is not currently captured
+anywhere. A downstream consumer must not assume `value` is always
+already a percentage/rate for ORR-classified rows. See
+`docs/data_dictionary.md` for where this is now documented. Tracked as
+a Phase 2/data-model enhancement, not resolved this session.
+
+### Explicit non-claim
+
+**Production readiness is still NOT claimed.** This session fixed the
+2 real bugs and added the 1 approved documentation improvement found
+in session 11's real-data validation, and re-verified against the
+exact same real dataset with a complete field-level diff — but this is
+incremental progress on a classifier that continues to require
+real-data validation on every change, not a one-time "done" state.
 
 ## Completed
 
