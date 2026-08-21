@@ -270,6 +270,37 @@ failures, 0 malformed records, written to a real PostgreSQL database.
       future change should be re-validated against real data the same
       way.
 
+### Phase 2B — API Vertical Slice (2026-08-14, session 13)
+
+Approved architecture: FastAPI + raw SQL/psycopg2, no ORM. Read-only.
+
+* [x] Read layer: `singularity.db.get_trial`, `list_trials`,
+      `get_outcomes_for_trial` (joined with latest classification via
+      the existing `latest_endpoint_classifications` view).
+* [x] `value_type` computed field (`singularity.value_types`) —
+      "count"/"rate"/"time"/"other", derived from `parameter`/`unit`
+      at read time. Closes the session-11 count-vs-rate risk without a
+      schema change, per approved decision. 11 tests, every rule
+      grounded in a real `(parameter, unit)` pair.
+* [x] Pydantic response models (`singularity.api.models`) defined and
+      tested before any HTTP routing existed.
+* [x] Vertical slice: `GET /trials/{nct_id}`, `GET /trials` (with
+      condition/phase/status filters), `GET /trials/{nct_id}/outcomes`
+      (endpoint/subtype/confident/reason/value/unit/parameter/
+      value_type included; `provenance_raw` excluded by default).
+* [x] Integration tests against a real local PostgreSQL instance (9
+      tests, seeded via the existing tested `db.py` write functions)
+      plus an OpenAPI schema smoke test. Full suite: 100/100.
+* [ ] Task 7 (close the remaining `Trial` field-verification gap using
+      existing Colab data): **not closed** — the session-11 Colab
+      export didn't include `official_title`/`interventions`/
+      `start_date`/`completion_date`/`enrollment_count` columns.
+      Explicitly did not block Phase 2B, per instruction. Would need a
+      fresh export with those columns to close.
+* [ ] Explicitly NOT started, per instruction: ML, additional data
+      sources, taxonomy expansion, authentication, background jobs,
+      GraphQL, ingestion automation, frontend/UI.
+
 ### Phase 2 — remaining (not started)
 
 * [ ] Build trial search

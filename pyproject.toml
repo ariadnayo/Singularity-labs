@@ -10,6 +10,7 @@ dependencies = []
 [project.optional-dependencies]
 dev = ["pytest"]
 db = ["psycopg2-binary"]
+api = ["fastapi", "uvicorn", "httpx"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

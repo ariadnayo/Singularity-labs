@@ -2,7 +2,7 @@
 
 ## Last Updated
 
-2026-08-14 (session 12)
+2026-08-14 (session 13)
 
 ## Current Phase
 
@@ -813,6 +813,114 @@ in session 11's real-data validation, and re-verified against the
 exact same real dataset with a complete field-level diff — but this is
 incremental progress on a classifier that continues to require
 real-data validation on every change, not a one-time "done" state.
+
+## Session 13 Summary: Phase 2B — API Vertical Slice Built and Verified (2026-08-14)
+
+**Scope: exactly the approved Phase 2B plan, nothing else.** No ML,
+additional data sources, taxonomy expansion, authentication,
+background jobs, GraphQL, or ingestion automation. No frontend/UI —
+this is the backend data layer the eventual website will call.
+
+### What was built
+
+1. **`singularity.value_types.infer_value_type`** — pure function,
+   computes `"count"`/`"rate"`/`"time"`/`"other"` from `parameter`/`unit`
+   at read time. Directly resolves the session-11 finding (a real ORR
+   row with `parameter=COUNT_OF_PARTICIPANTS, value=23` is a raw
+   count, not a rate — the source's `denoms` denominator, 66, isn't
+   captured anywhere) **without a schema change**, per your explicit
+   decision. 11 tests, every rule grounded in an actual real
+   `(parameter, unit)` pair from the session-11 validation dataset —
+   including a specific negative case (`"L/hr"`, `"ng*hr/mL"` — real PK
+   units using the "hr" *abbreviation*, not the word "hour" — must
+   stay `"other"`, not `"time"`).
+2. **Read functions added to `singularity.db`**: `get_trial`,
+   `list_trials` (condition/phase/status filters, capped `LIMIT`),
+   `get_outcomes_for_trial` (LEFT JOIN to
+   `latest_endpoint_classifications`, so a record with no
+   classification yet still appears rather than vanishing). Return
+   plain dicts, not dataclasses — deliberately decouples the DB read
+   layer from the API response shape.
+3. **Pydantic response models** (`singularity.api.models`) — written
+   and tested (via direct construction, no HTTP) before any route
+   existed, per the approved plan's ordering. `provenance_raw`
+   deliberately excluded from every response.
+4. **FastAPI app** (`singularity.api.main`) — exactly the 3 approved
+   endpoints. `GET /trials/{nct_id}`, `GET /trials`,
+   `GET /trials/{nct_id}/outcomes`.
+
+### Real verification performed, and its exact boundary
+
+**Real PostgreSQL, via the existing tested write path** (same
+methodology as sessions 9/10): all 9 API tests
+(`tests/test_api.py`) run against a real, disposable local PostgreSQL
+16 instance, with data seeded through the actual `singularity.db`
+write functions (`upsert_trial`, `replace_outcome_records_for_trial`,
+`insert_classifications`) — not hand-written SQL fixtures — using real
+ClinicalTrials.gov titles from the session-11 dataset (e.g. "Disease
+Assessment for Objective Response Rate" with
+`parameter=COUNT_OF_PARTICIPANTS`) with synthetic NCT IDs. This
+directly confirms the exact real scenario that motivated `value_type`:
+the seeded ORR row's API response correctly shows `"value_type":
+"count"`, not `"rate"`.
+
+**Not run against the actual Colab-ingested database** — only against
+disposable local scratch databases. **Task 7 (closing the remaining
+`Trial` field-verification gap) was not completed** — the session-11
+Colab export lacked the columns needed
+(`official_title`/`interventions`/`start_date`/`completion_date`/
+`enrollment_count`); per instruction this explicitly did not block
+Phase 2B, and remains open for a future session with a broader export.
+
+### Test suite
+
+**100/100 passing** (80 pre-session-13 + 11 `value_type` + 9 API).
+
+### Example real API output (captured by actually running the app against seeded data, not written by hand)
+
+`GET /trials/{nct_id}/outcomes` for a trial with a real
+`COUNT_OF_PARTICIPANTS`-typed ORR row and a real median-OS row:
+
+```json
+{
+  "nct_id": "NCT88800001",
+  "outcomes": [
+    {
+      "title": "Disease Assessment for Objective Response Rate",
+      "parameter": "COUNT_OF_PARTICIPANTS", "unit": "Participants",
+      "value": 23.0, "value_type": "count",
+      "endpoint": "ORR", "confident": true
+    },
+    {
+      "title": "Overall Survival",
+      "parameter": "MEDIAN", "unit": "months",
+      "value": 24.5, "value_type": "time",
+      "endpoint": "OS", "subtype": "median_or_time_to_event", "confident": true
+    }
+  ],
+  "count": 2
+}
+```
+
+### What's blocking the frontend, precisely
+
+Nothing structural — the API is a real, tested, running FastAPI app
+with a defined JSON contract. What's still missing before a website
+can meaningfully use it: (1) the API hasn't been pointed at the real
+Colab-ingested database yet (only tested against disposable local
+databases seeded with realistic data); (2) only 3 endpoints exist —
+no single-outcome-record detail endpoint, no search-across-conditions
+beyond substring match, no aggregate/summary endpoints; (3) no CORS
+configuration yet (a browser-based frontend calling this API from a
+different origin will be blocked by the browser until that's added);
+(4) no deployment target — this only runs locally right now.
+
+### Explicit non-claim
+
+**Production readiness is still NOT claimed.** The classifier was not
+modified this session (no bug was found or approved for a classifier
+change). This is backend infrastructure progress, verified the same
+rigorous way as every prior session, not a "done" milestone.
 
 ## Completed
 
