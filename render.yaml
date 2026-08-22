@@ -1,0 +1,39 @@
+# Render Blueprint -- see https://render.com/docs/blueprint-spec
+#
+# Defines BOTH the managed PostgreSQL database and the FastAPI web
+# service in one file, so `render.yaml` alone is enough to deploy
+# both pieces of the ClinicalTrials.gov -> PostgreSQL -> FastAPI ->
+# (future) browser frontend pipeline. See docs/deployment.md for the
+# full walkthrough and what remains manual (running migrations,
+# running ingestion -- neither is automated by this blueprint,
+# deliberately: no background-job system, per the Phase 2B-3 scope).
+
+databases:
+  - name: singularity-labs-db
+    plan: free
+    databaseName: singularity_labs
+    user: singularity
+
+services:
+  - type: web
+    name: singularity-labs-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -e ".[db,api]"
+    startCommand: uvicorn singularity.api.main:app --host 0.0.0.0 --port $PORT --app-dir src
+    healthCheckPath: /health
+    envVars:
+      # Render auto-populates this from the database above when the
+      # blueprint is applied -- no secret is ever written to this
+      # file or committed to git.
+      - key: SINGULARITY_DATABASE_URL
+        fromDatabase:
+          name: singularity-labs-db
+          property: connectionString
+      # Set manually in the Render dashboard once the frontend has a
+      # real deployed origin -- not set here since that origin doesn't
+      # exist yet (frontend not built, per Phase 2B-3 scope). Falls
+      # back to the localhost dev-origin defaults in
+      # singularity.api.main if left unset.
+      - key: SINGULARITY_CORS_ORIGINS
+        sync: false

@@ -52,8 +52,16 @@ def get_connection(dsn: "str | None" = None):
     singularity.sources.clinicaltrials).
 
     `dsn` defaults to the SINGULARITY_DATABASE_URL environment
-    variable if not passed explicitly. Never hardcodes a real
-    application database DSN anywhere in this codebase.
+    variable if not passed explicitly, falling back to the plain
+    DATABASE_URL environment variable if that's not set either --
+    added session 15 (2026-08-14) for deployment: most managed-Postgres
+    hosting platforms (Render, Railway, Heroku-style) auto-inject
+    DATABASE_URL, and requiring a second, differently-named variable
+    just for this app adds friction with no benefit. SINGULARITY_DATABASE_URL
+    is checked first so it always wins if both are set (e.g. local dev
+    with a platform-provided DATABASE_URL pointing elsewhere). Never
+    hardcodes a real application database DSN anywhere in this
+    codebase.
     """
     try:
         import psycopg2  # noqa: F401 (import used below via module attribute)
@@ -63,11 +71,11 @@ def get_connection(dsn: "str | None" = None):
             "'db' extra: pip install -e \".[db]\""
         ) from e
 
-    resolved_dsn = dsn or os.environ.get("SINGULARITY_DATABASE_URL")
+    resolved_dsn = dsn or os.environ.get("SINGULARITY_DATABASE_URL") or os.environ.get("DATABASE_URL")
     if not resolved_dsn:
         raise ValueError(
-            "No database DSN provided and SINGULARITY_DATABASE_URL is not set. "
-            "Refusing to guess a connection target."
+            "No database DSN provided and neither SINGULARITY_DATABASE_URL nor "
+            "DATABASE_URL is set. Refusing to guess a connection target."
         )
     return __import__("psycopg2").connect(resolved_dsn)
 

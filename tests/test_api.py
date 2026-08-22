@@ -117,12 +117,88 @@ def _seed_real_shaped_trial(conn, nct_id="NCT88888801"):
     return trial, records
 
 
+def test_root_endpoint_never_touches_database():
+    """'/' must respond even with no database configured at all --
+    common platform default health-check target."""
+    import os as _os
+    saved = {k: _os.environ.pop(k, None) for k in ("SINGULARITY_DATABASE_URL", "DATABASE_URL")}
+    try:
+        with fastapi_testclient.TestClient(app) as c:
+            resp = c.get("/")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["name"] == "Singularity Labs API"
+        assert body["docs_url"] == "/docs"
+    finally:
+        for k, v in saved.items():
+            if v is not None:
+                _os.environ[k] = v
+
+
+def test_health_endpoint_reports_not_configured_without_crashing():
+    import os as _os
+    saved = {k: _os.environ.pop(k, None) for k in ("SINGULARITY_DATABASE_URL", "DATABASE_URL")}
+    try:
+        with fastapi_testclient.TestClient(app) as c:
+            resp = c.get("/health")
+        assert resp.status_code == 200  # never fails the HTTP request itself
+        body = resp.json()
+        assert body["status"] == "ok"
+        assert body["database"] == "not_configured"
+    finally:
+        for k, v in saved.items():
+            if v is not None:
+                _os.environ[k] = v
+
+
+def test_health_endpoint_reports_connected_against_real_db(test_db_connection):
+    """Confirms /health's real DB check (SELECT 1) actually works
+    against a real database, not just the not-configured path."""
+    import os as _os
+    with test_db_connection.cursor() as cur:
+        cur.execute("SELECT current_database()")
+        db_name = cur.fetchone()[0]
+    real_dsn = ADMIN_DSN.rsplit("/", 1)[0] + f"/{db_name}"
+    saved = _os.environ.get("SINGULARITY_DATABASE_URL")
+    _os.environ["SINGULARITY_DATABASE_URL"] = real_dsn
+    try:
+        with fastapi_testclient.TestClient(app) as c:
+            resp = c.get("/health")
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok", "database": "connected"}
+    finally:
+        if saved is not None:
+            _os.environ["SINGULARITY_DATABASE_URL"] = saved
+        else:
+            _os.environ.pop("SINGULARITY_DATABASE_URL", None)
+
+
+def test_data_endpoint_returns_503_with_clear_message_when_db_not_configured():
+    """'Clear handling of missing database configuration' -- a data
+    endpoint must return a clean 503 with an actionable message, not a
+    raw traceback/500, when SINGULARITY_DATABASE_URL/DATABASE_URL
+    aren't set."""
+    import os as _os
+    saved = {k: _os.environ.pop(k, None) for k in ("SINGULARITY_DATABASE_URL", "DATABASE_URL")}
+    try:
+        with fastapi_testclient.TestClient(app) as c:
+            resp = c.get("/trials")
+        assert resp.status_code == 503
+        assert "not configured" in resp.json()["detail"].lower()
+    finally:
+        for k, v in saved.items():
+            if v is not None:
+                _os.environ[k] = v
+
+
 def test_openapi_schema_is_well_formed_no_db_needed():
     with fastapi_testclient.TestClient(app) as c:
         resp = c.get("/openapi.json")
     assert resp.status_code == 200
     schema = resp.json()
-    assert set(schema["paths"].keys()) == {"/trials/{nct_id}", "/trials", "/trials/{nct_id}/outcomes"}
+    assert set(schema["paths"].keys()) == {
+        "/", "/health", "/trials/{nct_id}", "/trials", "/trials/{nct_id}/outcomes"
+    }
 
 
 def test_get_trial_by_nct_id(client, test_db_connection):

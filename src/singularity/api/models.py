@@ -20,6 +20,17 @@ from pydantic import BaseModel, Field
 from ..value_types import ValueType
 
 
+class HealthResponse(BaseModel):
+    status: str = Field(description="Always 'ok' if the app process itself is responding.")
+    database: str = Field(description="'connected', 'unreachable', or 'not_configured'. Never raises.")
+
+
+class RootResponse(BaseModel):
+    name: str
+    version: str
+    docs_url: str
+
+
 class TrialResponse(BaseModel):
     nct_id: str
     brief_title: Optional[str] = None

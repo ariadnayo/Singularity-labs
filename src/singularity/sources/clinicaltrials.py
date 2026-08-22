@@ -316,6 +316,15 @@ def extract_trial(study: dict) -> Optional[Trial]:
 
     Returns None (does not fabricate a Trial) if the study has no
     NCT ID -- the one field this project has actually verified live.
+
+    PROVENANCE-COMPLETENESS GAP FOUND AND FIXED (2026-08-14, session
+    15): `provenance.raw` previously omitted `armsInterventionsModule`
+    even though `interventions` is extracted from it -- meaning the
+    `interventions` field could never be audited against its own
+    provenance. Found by code inspection (no live data was available
+    to check against this session either), not by a live-data
+    mismatch. Fixed additively; does not change what any field
+    extracts, only what's captured for later audit.
     """
     protocol = study.get("protocolSection", {})
     identification = protocol.get("identificationModule", {})
@@ -353,6 +362,7 @@ def extract_trial(study: dict) -> Optional[Trial]:
             "designModule": design,
             "sponsorCollaboratorsModule": sponsor_module,
             "conditionsModule": conditions_module,
+            "armsInterventionsModule": arms_module,
         },
     )
 

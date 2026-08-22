@@ -146,6 +146,18 @@ def test_extract_trial_provenance_raw_preserves_relevant_modules():
     assert trial.provenance.raw["statusModule"]["overallStatus"] == "RECRUITING"
 
 
+def test_provenance_raw_includes_arms_interventions_module():
+    """Regression test for the session-15 gap: armsInterventionsModule
+    was previously missing from provenance.raw even though
+    `interventions` is extracted from it, making that field
+    unauditable against its own source. Found by code inspection."""
+    study = _mock_full_protocol_study()
+    study["_page_provenance"] = {}
+    trial = extract_trial(study)
+    assert "armsInterventionsModule" in trial.provenance.raw
+    assert trial.provenance.raw["armsInterventionsModule"]["interventions"][0]["name"] == "Fictidrug"
+
+
 def test_fetch_trials_end_to_end_with_mock_transport():
     def fake_http_get(url: str) -> bytes:
         return json.dumps(

@@ -270,6 +270,28 @@ failures, 0 malformed records, written to a real PostgreSQL database.
       future change should be re-validated against real data the same
       way.
 
+### Phase 2B-3 — Deployment Prep (2026-08-14, session 15)
+
+* [x] Step 1: inspected `Trial` field extraction by code review. Found
+      and fixed one real gap (`armsInterventionsModule` missing from
+      provenance capture — additive fix, no schema change). **Live
+      verification of `official_title`/`interventions`/`start_date`/
+      `completion_date`/`enrollment_count` against real
+      ClinicalTrials.gov data remains open** — exact Colab query
+      documented in `docs/autonomous_state.md`/`docs/deployment.md`,
+      pending your run.
+* [x] Step 2: recommended deployment stack — Render (managed Postgres
+      + one FastAPI web service, one committed `render.yaml`
+      blueprint). No ORM/GraphQL/background-jobs/auth.
+* [x] Step 3: `DATABASE_URL` fallback; clean `503` on missing/failed DB
+      config; `GET /health` (never raises, reports real DB
+      connectivity); `GET /` (DB-independent liveness); `render.yaml`;
+      `docs/deployment.md`; confirmed no secrets committed. 5 new
+      tests. Full suite: 109/109.
+* [ ] **Not deployed.** `render.yaml` has not been applied to a real
+      Render account — production readiness explicitly not claimed
+      until the deployed API is tested against the real database.
+
 ### Phase 2B-2 — Real-Data API Verification (2026-08-14, session 14)
 
 * [x] Verified all 3 real endpoints against the exact real 109-row/

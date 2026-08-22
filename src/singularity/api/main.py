@@ -27,7 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .. import db as _db
 from ..value_types import infer_value_type
-from .models import OutcomeRecordResponse, TrialListResponse, TrialOutcomesResponse, TrialResponse
+from .models import OutcomeRecordResponse, RootResponse, TrialListResponse, TrialOutcomesResponse, TrialResponse, HealthResponse
 
 app = FastAPI(
     title="Singularity Labs API",
@@ -59,13 +59,64 @@ app.add_middleware(
 def get_db_connection():
     """FastAPI dependency: one connection per request, always closed
     afterward (even on error) via the try/finally. Uses
-    SINGULARITY_DATABASE_URL -- see singularity.db.get_connection.
+    SINGULARITY_DATABASE_URL (or DATABASE_URL as a fallback) -- see
+    singularity.db.get_connection.
+
+    Deliberately converts missing-config/connection-failure into a
+    clean HTTP 503 with a clear message, rather than letting a raw
+    ValueError/psycopg2 exception surface as an unhandled 500 with a
+    traceback -- added session 15 (2026-08-14) for deployment: "clear
+    handling of missing database configuration" per the Phase 2B-3
+    scope. /health and / do NOT use this dependency (see below) --
+    they must stay reachable even when the database is completely
+    unreachable or unconfigured, so a deployment platform's liveness
+    probe doesn't fail just because the DB isn't ready yet.
     """
-    conn = _db.get_connection()
+    try:
+        conn = _db.get_connection()
+    except ValueError as e:
+        raise HTTPException(status_code=503, detail=f"Database not configured: {e}") from e
+    except Exception as e:  # noqa: BLE001 -- any connection failure, not just missing config
+        raise HTTPException(status_code=503, detail=f"Database unreachable: {e}") from e
     try:
         yield conn
     finally:
         conn.close()
+
+
+@app.get("/", response_model=RootResponse)
+def root() -> RootResponse:
+    """Basic liveness/info endpoint. Does NOT touch the database --
+    many deployment platforms ping '/' by default for a basic health
+    check, and this must always respond regardless of DB state."""
+    return RootResponse(name="Singularity Labs API", version=app.version, docs_url="/docs")
+
+
+@app.get("/health", response_model=HealthResponse)
+def health() -> HealthResponse:
+    """Deployment health check. Always returns 200 -- this reports
+    status IN the response body rather than failing the HTTP request,
+    so a platform's liveness probe can distinguish "app process is up
+    but DB isn't ready" from "app process itself is down" (the latter
+    is the only case that should actually fail a liveness check).
+
+    Never raises: a completely unreachable/misconfigured database is a
+    normal, expected, reportable state for this endpoint, not a crash.
+    """
+    database_configured = bool(os.environ.get("SINGULARITY_DATABASE_URL") or os.environ.get("DATABASE_URL"))
+    database_status = "not_configured"
+    if database_configured:
+        try:
+            conn = _db.get_connection()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+                database_status = "connected"
+            finally:
+                conn.close()
+        except Exception:  # noqa: BLE001 -- deliberately broad: this endpoint must never raise
+            database_status = "unreachable"
+    return HealthResponse(status="ok", database=database_status)
 
 
 @app.get("/trials/{nct_id}", response_model=TrialResponse)
