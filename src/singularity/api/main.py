@@ -19,9 +19,11 @@ Run locally:
 
 from __future__ import annotations
 
+import os
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 
 from .. import db as _db
 from ..value_types import infer_value_type
@@ -31,6 +33,26 @@ app = FastAPI(
     title="Singularity Labs API",
     description="Read-only clinical trial / endpoint classification data layer.",
     version="0.1.0",
+)
+
+# CORS: added session 14 (2026-08-14) so a browser-based frontend on a
+# different origin can call this API -- the frontend itself is NOT
+# built yet (see docs/roadmap.md "Phase 2B"), this only unblocks it.
+# `allow_origins` defaults to common local dev origins (Next.js's
+# default port 3000, plus 5173 for Vite-based tooling if ever used);
+# override via the SINGULARITY_CORS_ORIGINS env var (comma-separated)
+# for any other deployment target. No credentials/cookies are used by
+# this API (no auth exists yet), so allow_credentials stays False.
+_default_origins = ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173", "http://127.0.0.1:5173"]
+_cors_origins_env = os.environ.get("SINGULARITY_CORS_ORIGINS")
+_cors_origins = [o.strip() for o in _cors_origins_env.split(",")] if _cors_origins_env else _default_origins
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET"],
+    allow_headers=["*"],
 )
 
 

@@ -270,6 +270,31 @@ failures, 0 malformed records, written to a real PostgreSQL database.
       future change should be re-validated against real data the same
       way.
 
+### Phase 2B-2 — Real-Data API Verification (2026-08-14, session 14)
+
+* [x] Verified all 3 real endpoints against the exact real 109-row/
+      10-trial/3-with-results dataset from the Colab ingestion, loaded
+      into a real local PostgreSQL replica (no network path to the
+      live Colab instance exists from this sandbox — see
+      `docs/autonomous_state.md` "Session 14 Summary" for the explicit
+      methodology and its honest boundary).
+* [x] All 6 verification criteria confirmed against real data: trial
+      metadata, outcome records, endpoint/subtype/confidence, `value_type`
+      (including the exact real count-vs-rate risk case), no silent
+      drops, provenance correctly excluded per contract.
+* [x] CORS added (`GET`-only, no credentials, configurable origins) —
+      unblocks a future browser frontend; frontend itself not started.
+* [x] 4 new integration tests closing real-data-shape gaps (PK/rate/
+      DOR via live API, low-confidence case, large unclassified batch).
+      Full suite: 104/104.
+* [x] No classifier/schema/ingestion changes — real verification found
+      zero failures requiring one.
+* [ ] Honest gap: zero low-confidence classified rows exist in this
+      specific real dataset (a positive side-effect of session 12's
+      fix) — the low-confidence test case uses a real phrasing pattern
+      from session 6 on a synthetic NCT ID, not a literal row from this
+      109-row export.
+
 ### Phase 2B — API Vertical Slice (2026-08-14, session 13)
 
 Approved architecture: FastAPI + raw SQL/psycopg2, no ORM. Read-only.
